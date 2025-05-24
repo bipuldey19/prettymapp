@@ -11,11 +11,13 @@ from io import BytesIO, StringIO
 from typing import Any
 
 import geopandas as gpd
+import pandas as pd
 import requests
 import streamlit as st
 from matplotlib.patches import Patch
 from shapely.geometry import Polygon
 from prettymapp.geo import get_aoi
+from prettymapp.osm import get_osm_geometries
 from prettymapp.plotting import Plot
 from prettymapp.settings import STYLES
 
@@ -44,6 +46,29 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.markdown("# 🗺️ Prettymapp - Beautiful Maps Made Easy")
+
+@st.cache_data(
+    show_spinner=False, 
+    hash_funcs={Polygon: lambda x: json.dumps(x.__geo_interface__)}
+)
+def st_get_osm_geometries(aoi):
+    """Wrapper to enable streamlit caching for package function"""
+    df = get_osm_geometries(aoi=aoi)
+    return df
+
+@st.cache_data(show_spinner=False)
+def st_plot_all(_df: gpd.GeoDataFrame, **kwargs):
+    """Modified plotting function with copyright removal"""
+    plot = Plot(_df, **kwargs)
+    fig = plot.plot_all()
+    ax = fig.gca()
+    
+    # Remove default copyright text
+    for text in ax.texts:
+        if '© OpenStreetMap' in text.get_text():
+            text.set_visible(False)
+    
+    return fig
 
 @st.cache_data(ttl=300)
 def search_locations(query, limit=5):
@@ -91,16 +116,6 @@ def search_locations(query, limit=5):
         st.error(f"Search error: {str(e)}")
         return []
 
-# Add this to your code before the main form section
-@st.cache_data(
-    show_spinner=False, 
-    hash_funcs={Polygon: lambda x: json.dumps(x.__geo_interface__)}
-)
-def st_get_osm_geometries(aoi):
-    """Wrapper to enable streamlit caching for package function"""
-    df = get_osm_geometries(aoi=aoi)
-    return df
-
 def process_uploaded_file(uploaded_file):
     try:
         if uploaded_file.name.endswith('.kml'):
@@ -140,20 +155,6 @@ def create_style_selector():
             ):
                 st.session_state.style = style
     return current_style
-
-@st.cache_data(show_spinner=False)
-def st_plot_all(_df: gpd.GeoDataFrame, **kwargs):
-    """Modified plotting function with copyright removal"""
-    plot = Plot(_df, **kwargs)
-    fig = plot.plot_all()
-    ax = fig.gca()
-    
-    # Remove default copyright text
-    for text in ax.texts:
-        if '© OpenStreetMap' in text.get_text():
-            text.set_visible(False)
-    
-    return fig
 
 # Initialize session state
 if 'search_results' not in st.session_state:
