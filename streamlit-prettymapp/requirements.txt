@@ -5,3 +5,6 @@ pyogrio
 prettymapp
 requests
 geopy
+geopandas
+fiona
+shapely
