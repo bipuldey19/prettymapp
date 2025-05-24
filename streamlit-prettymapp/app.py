@@ -1,5 +1,3 @@
-import copy
-import json
 import requests
 import time
 import streamlit as st
@@ -12,17 +10,18 @@ import zipfile
 from utils import (
     st_get_osm_geometries,
     st_plot_all,
-    get_colors_from_style,
     gdf_to_bytesio_geojson,
 )
-from prettymapp.geo import GeoCodingError, get_aoi
+from prettymapp.geo import get_aoi
 from prettymapp.settings import STYLES
 
 st.set_page_config(
-    page_title="prettymapp", page_icon="🖼️", initial_sidebar_state="collapsed"
+    page_title="prettymapp", 
+    page_icon="🖼️", 
+    initial_sidebar_state="collapsed"
 )
 
-# Custom CSS for better styling
+# Custom CSS
 st.markdown("""
 <style>
 .location-search-container {
@@ -31,20 +30,11 @@ st.markdown("""
     border-radius: 0.5rem;
     margin-bottom: 1rem;
 }
-.search-result-btn {
-    width: 100%;
-    text-align: left;
-    margin: 0.2rem 0;
-}
 .file-upload-section {
     background-color: #e8f4f8;
     padding: 1rem;
     border-radius: 0.5rem;
     border-left: 4px solid #0066cc;
-}
-.gps-loading {
-    color: #0066cc;
-    font-weight: bold;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -60,27 +50,22 @@ def get_user_location_js():
                 function(position) {
                     const lat = position.coords.latitude;
                     const lon = position.coords.longitude;
-                    
                     window.parent.document.dispatchEvent(
                         new CustomEvent('gpsLocation', {detail: {lat: lat, lon: lon}})
                     );
                 },
                 function(error) {
                     console.error('Geolocation error:', error);
-                    alert('Unable to get location. Please check permissions.');
                 },
                 {enableHighAccuracy: true, timeout: 10000}
             );
-        } else {
-            alert('Geolocation not supported by this browser.');
         }
     }
     </script>
     """
 
 @st.cache_data(ttl=300)
-def search_locations(query, limit=8):
-    """Enhanced location search with error handling"""
+def search_locations(query, limit=5):
     if not query or len(query) < 2:
         return []
     
@@ -91,8 +76,7 @@ def search_locations(query, limit=8):
                 'q': query,
                 'format': 'json',
                 'limit': limit,
-                'addressdetails': 1,
-                'extratags': 1
+                'addressdetails': 1
             },
             headers={'User-Agent': 'prettymapp-streamlit/1.0'},
             timeout=10
@@ -112,11 +96,11 @@ def search_locations(query, limit=8):
                 display_parts.append(country)
             
             results.append({
-                'display': ', '.join(display_parts) or item.get('display_name', 'Unnamed location'),
+                'display': ', '.join(display_parts) or item.get('display_name', 'Location'),
                 'full': item.get('display_name', ''),
                 'lat': float(item.get('lat', 0)),
                 'lon': float(item.get('lon', 0)),
-                'type': f"{item.get('type', 'location')} ({item.get('class', 'place')})",
+                'type': f"{item.get('type', 'place')} ({item.get('class', 'location')})",
                 'importance': item.get('importance', 0)
             })
         
@@ -127,7 +111,6 @@ def search_locations(query, limit=8):
         return []
 
 def process_uploaded_file(uploaded_file):
-    """File upload handling with better error feedback"""
     try:
         if uploaded_file.name.endswith('.kml'):
             return gpd.read_file(uploaded_file)
@@ -150,7 +133,6 @@ def process_uploaded_file(uploaded_file):
     return None
 
 def create_style_selector():
-    """Style selector with error-resistant implementation"""
     st.markdown("#### 🎨 Choose Your Map Style")
     cols = st.columns(4)
     styles = list(STYLES.keys())
@@ -161,13 +143,11 @@ def create_style_selector():
         with cols[idx % 4]:
             if st.button(
                 f"🏞️ {style}",
-                key=f"style_{style}",
+                key=f"style_btn_{style}",
                 use_container_width=True,
                 type="primary" if style == current_style else "secondary"
             ):
                 st.session_state.style = style
-                st.rerun()
-    
     return current_style
 
 # Initialize session state
@@ -176,12 +156,11 @@ if 'search_results' not in st.session_state:
 if 'location' not in st.session_state:
     st.session_state.location = {'lat': None, 'lon': None}
 
-# Geolocation handling
-components_html = get_user_location_js()
-st.components.v1.html(components_html, height=0)
+# Geolocation setup
+st.components.v1.html(get_user_location_js(), height=0)
 
 # File upload section
-with st.expander("📁 Upload Custom Boundaries (Optional)", expanded=False):
+with st.expander("📁 Upload Custom Boundaries", expanded=False):
     uploaded_file = st.file_uploader(
         "Upload KML/GeoJSON/Zipped Shapefile",
         type=['kml', 'zip', 'geojson', 'json'],
@@ -189,7 +168,7 @@ with st.expander("📁 Upload Custom Boundaries (Optional)", expanded=False):
     )
     
     if uploaded_file:
-        with st.spinner("Processing geospatial file..."):
+        with st.spinner("Processing file..."):
             if gdf := process_uploaded_file(uploaded_file):
                 st.session_state.uploaded_gdf = gdf
                 st.success(f"Loaded {len(gdf)} features")
@@ -198,8 +177,9 @@ with st.expander("📁 Upload Custom Boundaries (Optional)", expanded=False):
     if 'uploaded_gdf' in st.session_state:
         if st.button("Clear Uploaded Data"):
             del st.session_state.uploaded_gdf
+            st.rerun()
 
-# Location search section
+# Location search
 st.markdown("### 🔍 Location Search")
 col1, col2 = st.columns([3, 1])
 
@@ -211,35 +191,23 @@ with col1:
     )
     
     if len(search_query) >= 3:
-        with st.spinner("Searching locations..."):
+        with st.spinner("Searching..."):
             st.session_state.search_results = search_locations(search_query)
 
 with col2:
-    if st.button("📍 Use My Location", help="Get current location using GPS"):
+    if st.button("📍 Use My Location"):
         st.components.v1.html(get_user_location_js(), height=0)
-        st.session_state.gps_loading = True
 
-if getattr(st.session_state, 'gps_loading', False):
-    with st.status("Getting GPS location..."):
-        time.sleep(2)
-        if st.session_state.location.get('lat'):
-            st.success(f"Found location: {st.session_state.location['lat']:.4f}, {st.session_state.location['lon']:.4f}")
-        else:
-            st.error("Could not retrieve location")
-
-# Display search results with error handling
-# In the search results display section, modify the loop to use unique keys:
+# Display search results
 if st.session_state.search_results:
     st.markdown("**🔍 Search Results:**")
-    for idx, result in enumerate(st.session_state.search_results[:5]):
+    for idx, result in enumerate(st.session_state.search_results):
         cols = st.columns([4, 1])
-        display_text = result.get('display', 'Unnamed location')
-        result_type = result.get('type', 'location')
+        display_text = result.get('display', 'Location')
         
-        # Use index in key to ensure uniqueness
         cols[0].button(
             f"📍 {display_text}",
-            key=f"result_{idx}",  # Unique key per result
+            key=f"result_{idx}",
             use_container_width=True,
             on_click=lambda r=result: st.session_state.update({
                 'address': r.get('full', ''),
@@ -247,7 +215,7 @@ if st.session_state.search_results:
                 'lon': r.get('lon', 0)
             })
         )
-        cols[1].markdown(f"_{result_type}_")
+        cols[1].markdown(f"_{result.get('type', 'location')}_")
 
 # Main form
 form = st.form(key="main_form")
@@ -255,45 +223,50 @@ selected_style = create_style_selector()
 
 with form:
     col1, col2 = st.columns(2)
-    address = col1.text_input("Selected Location", key="address")
+    address = col1.text_input("Location Name", key="address")
     radius = col2.slider("Radius (meters)", 100, 2000, 500)
+    custom_title = st.text_input("Custom Title (optional)", key="custom_title")
     
-    # Advanced settings
     with st.expander("⚙️ Advanced Settings"):
-        bg_color = st.color_picker("Background Color", key="bg_color")
-        shape = st.selectbox("Map Shape", ["circle", "rectangle"], key="shape")
-        contour_width = st.slider("Border Width", 0, 10, 2, key="border_width")
-    
+        bg_color = st.color_picker("Background Color", "#ffffff")
+        shape = st.selectbox("Map Shape", ["circle", "rectangle"])
+        contour_width = st.slider("Border Width", 0, 10, 2)
+        font_size = st.slider("Title Size", 8, 40, 16)
+
     if form.form_submit_button("🖼️ Generate Map", type="primary"):
         if not address and 'uploaded_gdf' not in st.session_state:
             st.warning("Please select a location or upload boundaries")
         else:
-            with st.status("Creating your map..."):
+            with st.status("Creating map...", expanded=True) as status:
                 try:
                     config = {
                         'draw_settings': STYLES[selected_style],
                         'bg_color': bg_color,
                         'shape': shape,
-                        'contour_width': contour_width
+                        'contour_width': contour_width,
+                        'font_size': font_size,
+                        'name': custom_title or None
                     }
-                    
+
                     if 'uploaded_gdf' in st.session_state:
                         gdf = st.session_state.uploaded_gdf
-                        config['custom_title'] = "Custom Area"
+                        if not config['name']:
+                            config['name'] = "Custom Area"
                     else:
                         aoi = get_aoi(address=address, radius=radius)
                         gdf = st_get_osm_geometries(aoi)
-                        config['name'] = address
-                    
+                        if not config['name']:
+                            config['name'] = address
+
                     fig = st_plot_all(gdf, **config)
                     st.pyplot(fig)
-                    st.success("Map created successfully!")
-                
+                    status.update(label="Map created successfully!", state="complete")
+                    
                 except Exception as e:
                     st.error(f"Map creation failed: {str(e)}")
                     st.error("Try adjusting the location or radius")
 
-# GPS listener and handler
+# GPS listener
 if not hasattr(st.session_state, 'gps_listener_added'):
     st.components.v1.html("""
     <script>
@@ -307,6 +280,6 @@ if not hasattr(st.session_state, 'gps_listener_added'):
     """, height=0)
     st.session_state.gps_listener_added = True
 
-# Handle GPS coordinates display
+# Show GPS coordinates if available
 if st.session_state.location.get('lat'):
     st.write(f"GPS Coordinates: {st.session_state.location['lat']:.4f}, {st.session_state.location['lon']:.4f}")
