@@ -254,12 +254,9 @@ with form:
                 key=f"legend_{feature}"
             )
 
-   # ... (keep all previous imports and setup code)
+# ... (keep previous imports and setup code)
 
-# Modified Map Generation Section
-# ... (keep all previous imports and setup code)
-
-# Modified Map Generation Section
+# Modified Map Generation Section with Legend and Title Styling
 if form.form_submit_button("🖼️ Generate Map", type="primary"):
     if not address and 'uploaded_gdf' not in st.session_state:
         st.warning("Please select a location or upload boundaries")
@@ -286,8 +283,8 @@ if form.form_submit_button("🖼️ Generate Map", type="primary"):
 
                 # Generate base plot
                 fig = st_plot_all(gdf, **config)
-                ax = fig.gca()  # Get current axes
-                
+                ax = fig.gca()
+
                 # Add feature names if enabled
                 if show_feature_names:
                     for _, row in gdf.iterrows():
@@ -299,19 +296,53 @@ if form.form_submit_button("🖼️ Generate Map", type="primary"):
                                 fontsize=8,
                                 ha='center',
                                 va='center',
-                                color='black'
+                                color='black',
+                                fontfamily='serif'
                             )
                 
                 # Add legend if enabled
                 if show_legend:
-                    legend_elements = [
-                        Patch(facecolor=STYLES[selected_style][ft]['fc'], 
-                        label=legend_labels.get(ft, ft))
-                        for ft in ['building', 'water', 'green', 'park', 'highway']
-                        if ft in STYLES[selected_style]
-                    ]
-                    ax.legend(handles=legend_elements, loc='best')
-                
+                    legend_elements = []
+                    for ft in ['building', 'water', 'green', 'park', 'highway']:
+                        if ft in STYLES[selected_style]:
+                            legend_elements.append(
+                                Patch(
+                                    facecolor=STYLES[selected_style][ft]['fc'],
+                                    label=legend_labels.get(ft, ft.title()),
+                                    edgecolor='black',
+                                    linewidth=0.5
+                                )
+                            )
+                    
+                    # Position legend at top right with formal styling
+                    legend = ax.legend(
+                        handles=legend_elements,
+                        loc='upper right',
+                        bbox_to_anchor=(1, 1),
+                        prop={
+                            'family': 'serif',
+                            'size': 10
+                        },
+                        title='Legend',
+                        title_fontproperties={
+                            'family': 'serif',
+                            'weight': 'bold',
+                            'size': 12
+                        },
+                        frameon=True,
+                        framealpha=0.9,
+                        edgecolor='black'
+                    )
+                    legend.get_frame().set_facecolor('#ffffff')
+
+                # Style the main title
+                if custom_title:
+                    ax.title.set_fontfamily('serif')
+                    ax.title.set_fontweight('bold')
+                    ax.title.set_position([1, 1])  # Top right
+                    ax.title.set_ha('right')
+                    ax.title.set_va('bottom')
+
                 # Add copyright if enabled
                 if show_copyright:
                     ax.text(
@@ -319,7 +350,8 @@ if form.form_submit_button("🖼️ Generate Map", type="primary"):
                         ha='center', va='center',
                         transform=ax.transAxes,
                         fontsize=8,
-                        color='gray'
+                        color='gray',
+                        fontfamily='serif'
                     )
 
                 st.pyplot(fig)
@@ -329,9 +361,6 @@ if form.form_submit_button("🖼️ Generate Map", type="primary"):
                 st.error(f"Map creation failed: {str(e)}")
                 st.error("Try adjusting the location or radius")
 
-# ... (rest of the code remains the same)
-
-# ... (rest of the code remains the same)
 # GPS listener
 if not hasattr(st.session_state, 'gps_listener_added'):
     st.components.v1.html("""
