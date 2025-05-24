@@ -233,38 +233,43 @@ with form:
         contour_width = st.slider("Border Width", 0, 10, 2)
         font_size = st.slider("Title Size", 8, 40, 16)
 
-    if form.form_submit_button("🖼️ Generate Map", type="primary"):
-        if not address and 'uploaded_gdf' not in st.session_state:
-            st.warning("Please select a location or upload boundaries")
-        else:
-            with st.status("Creating map...", expanded=True) as status:
-                try:
-                    config = {
-                        'draw_settings': STYLES[selected_style],
-                        'bg_color': bg_color,
-                        'shape': shape,
-                        'contour_width': contour_width,
-                        'font_size': font_size,
-                        'name': custom_title or None
-                    }
+    # In the map creation section, modify the code to:
+if form.form_submit_button("🖼️ Generate Map", type="primary"):
+    if not address and 'uploaded_gdf' not in st.session_state:
+        st.warning("Please select a location or upload boundaries")
+    else:
+        with st.status("Creating map...", expanded=True) as status:
+            try:
+                config = {
+                    'draw_settings': STYLES[selected_style],
+                    'bg_color': bg_color,
+                    'shape': shape,
+                    'contour_width': contour_width,
+                    'font_size': font_size,
+                    'name': custom_title or None
+                }
 
-                    if 'uploaded_gdf' in st.session_state:
-                        gdf = st.session_state.uploaded_gdf
-                        if not config['name']:
-                            config['name'] = "Custom Area"
-                    else:
-                        aoi = get_aoi(address=address, radius=radius)
-                        gdf = st_get_osm_geometries(aoi)
-                        if not config['name']:
-                            config['name'] = address
+                if 'uploaded_gdf' in st.session_state:
+                    gdf = st.session_state.uploaded_gdf
+                    # Calculate bounds from uploaded geometry
+                    config['aoi_bounds'] = gdf.total_bounds
+                    if not config['name']:
+                        config['name'] = "Custom Area"
+                else:
+                    aoi = get_aoi(address=address, radius=radius)
+                    gdf = st_get_osm_geometries(aoi)
+                    # Get bounds from address-based AOI
+                    config['aoi_bounds'] = aoi.bounds
+                    if not config['name']:
+                        config['name'] = address
 
-                    fig = st_plot_all(gdf, **config)
-                    st.pyplot(fig)
-                    status.update(label="Map created successfully!", state="complete")
-                    
-                except Exception as e:
-                    st.error(f"Map creation failed: {str(e)}")
-                    st.error("Try adjusting the location or radius")
+                fig = st_plot_all(gdf, **config)
+                st.pyplot(fig)
+                status.update(label="Map created successfully!", state="complete")
+                
+            except Exception as e:
+                st.error(f"Map creation failed: {str(e)}")
+                st.error("Try adjusting the location or radius")
 
 # GPS listener
 if not hasattr(st.session_state, 'gps_listener_added'):
