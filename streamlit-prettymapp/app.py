@@ -228,16 +228,18 @@ if getattr(st.session_state, 'gps_loading', False):
             st.error("Could not retrieve location")
 
 # Display search results with error handling
+# In the search results display section, modify the loop to use unique keys:
 if st.session_state.search_results:
     st.markdown("**🔍 Search Results:**")
-    for result in st.session_state.search_results[:5]:
+    for idx, result in enumerate(st.session_state.search_results[:5]):
         cols = st.columns([4, 1])
         display_text = result.get('display', 'Unnamed location')
         result_type = result.get('type', 'location')
         
+        # Use index in key to ensure uniqueness
         cols[0].button(
             f"📍 {display_text}",
-            key=f"result_{display_text}",
+            key=f"result_{idx}",  # Unique key per result
             use_container_width=True,
             on_click=lambda r=result: st.session_state.update({
                 'address': r.get('full', ''),
