@@ -146,10 +146,10 @@ with form.expander("⚙️ Advanced Customization", expanded=False):
                 key="text_rotation"
             )
 
-form.form_submit_button(label="Generate Map", type="primary")
+submitted = form.form_submit_button(label="Generate Map", type="primary")
 
 # Main map generation
-if st.session_state.get("address"):
+if submitted and st.session_state.get("address"):
     try:
         with st.spinner("Creating your masterpiece... (may take up to a minute)"):
             # Get area of interest
