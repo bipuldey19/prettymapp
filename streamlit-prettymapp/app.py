@@ -1,8 +1,11 @@
 import copy
 import json
-
+import requests
+import time
 import streamlit as st
 from streamlit_image_select import image_select
+from geopy.geocoders import Nominatim
+from geopy.exc import GeocoderTimedOut, GeocoderServiceError
 
 from utils import (
     st_get_osm_geometries,
@@ -18,6 +21,95 @@ st.set_page_config(
 )
 st.markdown("# Prettymapp")
 
+# Popular areas for dropdown
+POPULAR_AREAS = {
+    "Major Cities": [
+        "New York, NY, USA",
+        "London, UK",
+        "Paris, France",
+        "Tokyo, Japan",
+        "Sydney, Australia",
+        "San Francisco, CA, USA",
+        "Berlin, Germany",
+        "Rome, Italy",
+        "Barcelona, Spain",
+        "Amsterdam, Netherlands"
+    ],
+    "Landmarks": [
+        "Times Square, New York",
+        "Eiffel Tower, Paris",
+        "Big Ben, London",
+        "Colosseum, Rome",
+        "Golden Gate Bridge, San Francisco",
+        "Central Park, New York",
+        "Hyde Park, London",
+        "Shibuya Crossing, Tokyo",
+        "Las Ramblas, Barcelona",
+        "Dam Square, Amsterdam"
+    ],
+    "Universities": [
+        "Harvard University, Cambridge, MA",
+        "Stanford University, Stanford, CA",
+        "MIT, Cambridge, MA",
+        "Oxford University, Oxford, UK",
+        "Cambridge University, Cambridge, UK",
+        "Sorbonne, Paris, France",
+        "University of Tokyo, Tokyo, Japan",
+        "ETH Zurich, Zurich, Switzerland"
+    ]
+}
+
+def get_user_location():
+    """Get user's approximate location using IP geolocation"""
+    try:
+        # Using ipapi.co for IP-based geolocation
+        response = requests.get("https://ipapi.co/json/", timeout=5)
+        if response.status_code == 200:
+            data = response.json()
+            return f"{data.get('city', '')}, {data.get('region', '')}, {data.get('country_name', '')}"
+    except:
+        pass
+    return None
+
+@st.cache_data(ttl=300)  # Cache for 5 minutes
+def search_locations(query, limit=5):
+    """Search for locations using Nominatim geocoding service"""
+    if not query or len(query) < 3:
+        return []
+    
+    try:
+        geolocator = Nominatim(user_agent="prettymapp_streamlit")
+        # Search with structured query for better results
+        locations = geolocator.geocode(
+            query, 
+            exactly_one=False, 
+            limit=limit,
+            timeout=3
+        )
+        
+        if locations:
+            results = []
+            for location in locations:
+                # Format the display name nicely
+                display_name = location.address
+                # Truncate if too long
+                if len(display_name) > 60:
+                    display_name = display_name[:57] + "..."
+                
+                results.append({
+                    'display_name': display_name,
+                    'full_address': location.address,
+                    'lat': location.latitude,
+                    'lon': location.longitude
+                })
+            return results
+    except (GeocoderTimedOut, GeocoderServiceError):
+        pass
+    except Exception:
+        pass
+    
+    return []
+
 with open("./streamlit-prettymapp/examples.json", "r", encoding="utf8") as f:
     EXAMPLES = json.load(f)
 
@@ -29,6 +121,16 @@ if not st.session_state:
     st.session_state.update(lc_class_colors)
     st.session_state["previous_style"] = "Peach"
     st.session_state["previous_example_index"] = 0
+
+# Initialize location-related session state
+if "user_location" not in st.session_state:
+    st.session_state.user_location = None
+if "selected_area" not in st.session_state:
+    st.session_state.selected_area = ""
+if "search_query" not in st.session_state:
+    st.session_state.search_query = ""
+if "search_results" not in st.session_state:
+    st.session_state.search_results = []
 
 example_image_pattern = "streamlit-prettymapp/example_prints/{}_small.png"
 example_image_fp = [
@@ -47,13 +149,101 @@ if index_selected != st.session_state["previous_example_index"]:
     st.session_state["previous_example_index"] = index_selected
 
 st.write("")
+
+# Location options section
+st.markdown("### 📍 Location Search")
+
+# Real-time location search
+search_col1, search_col2 = st.columns([2, 1])
+
+with search_col1:
+    # Create a container for the search interface
+    search_container = st.container()
+    
+    with search_container:
+        # Search input with real-time updates
+        search_query = st.text_input(
+            "🔍 Search for any location:",
+            value=st.session_state.get("address", ""),
+            placeholder="Type any city, landmark, address, or place name...",
+            key="location_search",
+            help="Start typing to see live search suggestions"
+        )
+        
+        # Perform search when query changes and is long enough
+        if search_query != st.session_state.search_query and len(search_query) >= 3:
+            st.session_state.search_query = search_query
+            with st.spinner("Searching locations..."):
+                st.session_state.search_results = search_locations(search_query)
+        elif len(search_query) < 3:
+            st.session_state.search_results = []
+            st.session_state.search_query = search_query
+        
+        # Display search results
+        if st.session_state.search_results and len(search_query) >= 3:
+            st.markdown("**Search Results:**")
+            for i, result in enumerate(st.session_state.search_results):
+                if st.button(
+                    f"📍 {result['display_name']}", 
+                    key=f"search_result_{i}",
+                    help=f"Coordinates: {result['lat']:.4f}, {result['lon']:.4f}"
+                ):
+                    st.session_state.address = result['full_address']
+                    st.session_state.search_query = result['full_address']
+                    st.success(f"Selected: {result['display_name']}")
+                    st.rerun()
+
+with search_col2:
+    # Current location button
+    if st.button("📍 Use My Location", help="Get your approximate location", type="secondary"):
+        user_loc = get_user_location()
+        if user_loc:
+            st.session_state.address = user_loc
+            st.session_state.search_query = user_loc
+            st.success(f"Location: {user_loc}")
+            st.rerun()
+        else:
+            st.error("Unable to get location")
+    
+    # Quick area search dropdown
+    st.markdown("**Quick Search:**")
+    area_category = st.selectbox(
+        "Category:",
+        options=[""] + list(POPULAR_AREAS.keys()),
+        key="area_category"
+    )
+    
+    if area_category:
+        selected_area = st.selectbox(
+            f"{area_category}:",
+            options=[""] + POPULAR_AREAS[area_category],
+            key="selected_area_dropdown"
+        )
+        
+        if selected_area and selected_area != st.session_state.get("selected_area", ""):
+            st.session_state.address = selected_area
+            st.session_state.search_query = selected_area
+            st.session_state.selected_area = selected_area
+            st.success(f"Selected: {selected_area}")
+            st.rerun()
+
+# Add some spacing
+st.markdown("---")
+
 form = st.form(key="form_settings")
 col1, col2, col3 = form.columns([3, 1, 1])
 
 address = col1.text_input(
     "Location address",
+    value=st.session_state.get("address", ""),
     key="address",
+    help="This will be filled automatically when you use the search above"
 )
+
+# Remove the manual search suggestions since we now have real-time search
+# if address and len(address) > 3:
+#     col1.caption("💡 Try: 'Central Park NYC', 'Eiffel Tower', 'Times Square', or any specific address")
+
 radius = col2.slider(
     "Radius (meter)",
     100,
@@ -158,71 +348,85 @@ for lc_class in st.session_state.lc_classes:
     else:
         draw_settings[lc_class]["fc"] = picked_color
 
-form.form_submit_button(label="Submit")
+submit_button = form.form_submit_button(label="🗺️ Generate Map")
 
-result_container = st.empty()
-with st.spinner("Creating map... (may take up to a minute)"):
-    rectangular = shape != "circle"
-    try:
-        aoi = get_aoi(address=address, radius=radius, rectangular=rectangular)
-    except GeoCodingError as e:
-        st.error(f"ERROR: {str(e)}")
-        st.stop()
-    df = st_get_osm_geometries(aoi=aoi)
-    config = {
-        "aoi_bounds": aoi.bounds,
-        "draw_settings": draw_settings,
-        "name_on": name_on,
-        "name": address if custom_title == "" else custom_title,
-        "font_size": font_size,
-        "font_color": font_color,
-        "text_x": text_x,
-        "text_y": text_y,
-        "text_rotation": text_rotation,
-        "shape": shape,
-        "contour_width": contour_width,
-        "contour_color": contour_color,
-        "bg_shape": bg_shape,
-        "bg_buffer": bg_buffer,
-        "bg_color": bg_color,
-    }
-    fig = st_plot_all(_df=df, **config)
-    # result_container.write(html, unsafe_allow_html=True)
-    st.pyplot(fig, pad_inches=0, bbox_inches="tight", transparent=True, dpi=300)
+# Only proceed if we have an address
+if address and submit_button:
+    result_container = st.empty()
+    with st.spinner("Creating map... (may take up to a minute)"):
+        rectangular = shape != "circle"
+        try:
+            aoi = get_aoi(address=address, radius=radius, rectangular=rectangular)
+        except GeoCodingError as e:
+            st.error(f"ERROR: {str(e)}")
+            st.error("💡 Try using the dropdown options above or check your address spelling.")
+            st.stop()
+        
+        df = st_get_osm_geometries(aoi=aoi)
+        config = {
+            "aoi_bounds": aoi.bounds,
+            "draw_settings": draw_settings,
+            "name_on": name_on,
+            "name": address if custom_title == "" else custom_title,
+            "font_size": font_size,
+            "font_color": font_color,
+            "text_x": text_x,
+            "text_y": text_y,
+            "text_rotation": text_rotation,
+            "shape": shape,
+            "contour_width": contour_width,
+            "contour_color": contour_color,
+            "bg_shape": bg_shape,
+            "bg_buffer": bg_buffer,
+            "bg_color": bg_color,
+        }
+        fig = st_plot_all(_df=df, **config)
+        st.pyplot(fig, pad_inches=0, bbox_inches="tight", transparent=True, dpi=300)
 
-# svg_string = plt_to_svg(fig)
-# html = svg_to_html(svg_string)
-# st.write("")
-# fname = slugify(address)
-# img_format = st.selectbox("Download image as", ["svg", "png", "jpg"], index=0)
-# if img_format == "svg":
-#     data = svg_string
-# elif img_format == "png":
-#     import io
-#
-#     data = io.BytesIO()
-#     fig.savefig(data, pad_inches=0, bbox_inches="tight", transparent=True)
-# st.download_button(label="Download image", data=data, file_name=f"{fname}.{img_format}")
+        st.markdown("</br>", unsafe_allow_html=True)
+        st.markdown("</br>", unsafe_allow_html=True)
+        ex1, ex2 = st.columns(2)
 
-st.markdown("</br>", unsafe_allow_html=True)
-st.markdown("</br>", unsafe_allow_html=True)
-ex1, ex2 = st.columns(2)
+        with ex1.expander("Export geometries as GeoJSON"):
+            st.write(f"{df.shape[0]} geometries")
+            st.download_button(
+                label="Download",
+                data=gdf_to_bytesio_geojson(df),
+                file_name=f"prettymapp_{address[:10]}.geojson",
+                mime="application/geo+json",
+            )
 
-with ex1.expander("Export geometries as GeoJSON"):
-    st.write(f"{df.shape[0]} geometries")
-    st.download_button(
-        label="Download",
-        data=gdf_to_bytesio_geojson(df),
-        file_name=f"prettymapp_{address[:10]}.geojson",
-        mime="application/geo+json",
-    )
+        config = {"address": address, **config}
+        with ex2.expander("Export map configuration"):
+            st.write(config)
 
-config = {"address": address, **config}
-with ex2.expander("Export map configuration"):
-    st.write(config)
-
+elif not address and submit_button:
+    st.warning("⚠️ Please enter a location address or use one of the quick options above!")
 
 st.markdown("---")
+
+# Enhanced footer with tips
+st.markdown("### 💡 Tips for Better Maps")
+tips_col1, tips_col2 = st.columns(2)
+
+with tips_col1:
+    st.markdown("""
+    **Real-time Location Search:**
+    - Type any location to get live suggestions
+    - Search works for cities, landmarks, addresses
+    - Click on search results to select instantly
+    - Use coordinates for precise locations
+    """)
+
+with tips_col2:
+    st.markdown("""
+    **Quick Options:**
+    - Use "My Location" for current area
+    - Browse popular places in dropdowns
+    - Adjust radius for different map scales
+    - Try different themes and customizations
+    """)
+
 st.write(
     "Share on social media with the hashtag [#prettymaps](https://twitter.com/search?q=%23prettymaps&src=typed_query) !"
 )
