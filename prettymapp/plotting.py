@@ -242,21 +242,6 @@ class Plot:
             size=self.font_size,
         )
 
-    def set_credits(self, text: str = "© OpenStreetMap\n prettymapp | prettymaps", 
-                x: float | None = None, 
-                y: float | None = None, 
-                fontsize: int = 9, 
-                zorder: int = 6):
-        """
-        Add OSM credits. Defaults to lower right corner of map.
-        """
-        if x is None:
-            x = self.xmin + 0.87 * self.xdif
-        if y is None:
-            y = self.ymin - 0.70 * self.bg_buffer_y
-        text = self.ax.text(x=x, y=y, s=text, c="w", fontsize=fontsize, zorder=zorder)
-        text.set_path_effects([PathEffects.withStroke(linewidth=3, foreground="black")])
-
 
 def adjust_lightness(color: str, amount: float = 0.5) -> Tuple[float, float, float]:
     """
