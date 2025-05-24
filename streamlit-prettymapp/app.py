@@ -80,7 +80,7 @@ def get_user_location_js():
 
 @st.cache_data(ttl=300)
 def search_locations(query, limit=8):
-    """Enhanced location search with better error handling"""
+    """Enhanced location search with error handling"""
     if not query or len(query) < 2:
         return []
     
@@ -112,12 +112,12 @@ def search_locations(query, limit=8):
                 display_parts.append(country)
             
             results.append({
-                'display': ', '.join(display_parts) or item['display_name'],
-                'full': item['display_name'],
-                'lat': float(item['lat']),
-                'lon': float(item['lon']),
+                'display': ', '.join(display_parts) or item.get('display_name', 'Unnamed location'),
+                'full': item.get('display_name', ''),
+                'lat': float(item.get('lat', 0)),
+                'lon': float(item.get('lon', 0)),
                 'type': f"{item.get('type', 'location')} ({item.get('class', 'place')})",
-                'importance': item['importance']
+                'importance': item.get('importance', 0)
             })
         
         return sorted(results, key=lambda x: -x['importance'])
@@ -127,7 +127,7 @@ def search_locations(query, limit=8):
         return []
 
 def process_uploaded_file(uploaded_file):
-    """Handle file uploads with better error feedback"""
+    """File upload handling with better error feedback"""
     try:
         if uploaded_file.name.endswith('.kml'):
             return gpd.read_file(uploaded_file)
@@ -150,10 +150,12 @@ def process_uploaded_file(uploaded_file):
     return None
 
 def create_style_selector():
-    """Improved style selector with visual previews"""
+    """Style selector with error-resistant implementation"""
     st.markdown("#### 🎨 Choose Your Map Style")
     cols = st.columns(4)
     styles = list(STYLES.keys())
+    
+    current_style = st.session_state.get('style', 'Peach')
     
     for idx, style in enumerate(styles):
         with cols[idx % 4]:
@@ -161,12 +163,12 @@ def create_style_selector():
                 f"🏞️ {style}",
                 key=f"style_{style}",
                 use_container_width=True,
-                type="primary" if st.session_state.get('style') == style else "secondary"
+                type="primary" if style == current_style else "secondary"
             ):
                 st.session_state.style = style
                 st.rerun()
     
-    return st.session_state.get('style', 'Peach')
+    return current_style
 
 # Initialize session state
 if 'search_results' not in st.session_state:
@@ -220,27 +222,30 @@ with col2:
 if getattr(st.session_state, 'gps_loading', False):
     with st.status("Getting GPS location..."):
         time.sleep(2)
-        if st.session_state.location['lat']:
+        if st.session_state.location.get('lat'):
             st.success(f"Found location: {st.session_state.location['lat']:.4f}, {st.session_state.location['lon']:.4f}")
         else:
             st.error("Could not retrieve location")
 
-# Display search results
+# Display search results with error handling
 if st.session_state.search_results:
     st.markdown("**🔍 Search Results:**")
     for result in st.session_state.search_results[:5]:
         cols = st.columns([4, 1])
+        display_text = result.get('display', 'Unnamed location')
+        result_type = result.get('type', 'location')
+        
         cols[0].button(
-            f"📍 {result['display']}",
-            key=f"result_{result['display']}",
+            f"📍 {display_text}",
+            key=f"result_{display_text}",
             use_container_width=True,
             on_click=lambda r=result: st.session_state.update({
-                'address': r['full'],
-                'lat': r['lat'],
-                'lon': r['lon']
+                'address': r.get('full', ''),
+                'lat': r.get('lat', 0),
+                'lon': r.get('lon', 0)
             })
         )
-        cols[1].markdown(f"_{result['type']}_")
+        cols[1].markdown(f"_{result_type}_")
 
 # Main form
 form = st.form(key="main_form")
@@ -253,9 +258,9 @@ with form:
     
     # Advanced settings
     with st.expander("⚙️ Advanced Settings"):
-        st.color_picker("Background Color", key="bg_color")
-        st.selectbox("Map Shape", ["circle", "rectangle"], key="shape")
-        st.slider("Border Width", 0, 10, 2, key="border_width")
+        bg_color = st.color_picker("Background Color", key="bg_color")
+        shape = st.selectbox("Map Shape", ["circle", "rectangle"], key="shape")
+        contour_width = st.slider("Border Width", 0, 10, 2, key="border_width")
     
     if form.form_submit_button("🖼️ Generate Map", type="primary"):
         if not address and 'uploaded_gdf' not in st.session_state:
@@ -263,19 +268,22 @@ with form:
         else:
             with st.status("Creating your map..."):
                 try:
+                    config = {
+                        'draw_settings': STYLES[selected_style],
+                        'bg_color': bg_color,
+                        'shape': shape,
+                        'contour_width': contour_width
+                    }
+                    
                     if 'uploaded_gdf' in st.session_state:
                         gdf = st.session_state.uploaded_gdf
-                        config = {'custom_title': "Custom Area"}
+                        config['custom_title'] = "Custom Area"
                     else:
                         aoi = get_aoi(address=address, radius=radius)
                         gdf = st_get_osm_geometries(aoi)
-                        config = {'name': address}
+                        config['name'] = address
                     
-                    fig = st_plot_all(
-                        gdf,
-                        draw_settings=STYLES[selected_style],
-                        **config
-                    )
+                    fig = st_plot_all(gdf, **config)
                     st.pyplot(fig)
                     st.success("Map created successfully!")
                 
@@ -283,7 +291,7 @@ with form:
                     st.error(f"Map creation failed: {str(e)}")
                     st.error("Try adjusting the location or radius")
 
-# Add GPS location listener
+# GPS listener and handler
 if not hasattr(st.session_state, 'gps_listener_added'):
     st.components.v1.html("""
     <script>
@@ -291,11 +299,12 @@ if not hasattr(st.session_state, 'gps_listener_added'):
         const data = e.detail;
         window.parent.document.dispatchEvent(
             new CustomEvent('gpsReceived', {detail: data})
+        );
     });
     </script>
     """, height=0)
     st.session_state.gps_listener_added = True
 
-# Handle GPS coordinates
-if st.session_state.location['lat']:
+# Handle GPS coordinates display
+if st.session_state.location.get('lat'):
     st.write(f"GPS Coordinates: {st.session_state.location['lat']:.4f}, {st.session_state.location['lon']:.4f}")
