@@ -5,7 +5,6 @@ import io
 from io import BytesIO
 import streamlit as st
 from matplotlib import pyplot as plt
-from matplotlib.pyplot import figure
 from shapely.geometry import Polygon
 import geopandas as gpd
 
@@ -14,9 +13,7 @@ from utils import (
     st_plot_all,
     get_colors_from_style,
     gdf_to_bytesio_geojson,
-    slugify,
-    plt_to_svg,
-    svg_to_html
+    slugify
 )
 from prettymapp.geo import GeoCodingError, get_aoi
 from prettymapp.settings import STYLES
@@ -27,16 +24,11 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-st.markdown("# 🗜️ Prettymapp - Advanced Map Creator")
+st.markdown("# 🗺️ Prettymapp - Advanced Map Creator")
 
-# Initialize session state
-if "address" not in st.session_state:
-    st.session_state["address"] = ""
-
+# Initialize session state with required keys
 if "previous_style" not in st.session_state:
     st.session_state["previous_style"] = "Peach"
-
-if "lc_classes" not in st.session_state:
     lc_class_colors = get_colors_from_style("Peach")
     st.session_state.lc_classes = list(lc_class_colors.keys())
     st.session_state.update(lc_class_colors)
@@ -69,6 +61,11 @@ with col3.container(border=True):
         key="style",
         help="Choose from predefined color schemes"
     )
+
+# File uploaders for custom YML and SHP files
+with form.expander("📁 Upload Files", expanded=False):
+    uploaded_yml = st.file_uploader("Upload YAML configuration (optional)", type=["yml", "yaml"])
+    uploaded_shp = st.file_uploader("Upload SHP file (optional)", type=["shp", "zip"])
 
 # Advanced settings expander
 with form.expander("⚙️ Advanced Customization", expanded=False):
@@ -148,38 +145,21 @@ with form.expander("⚙️ Advanced Customization", expanded=False):
                 key="text_rotation"
             )
 
-# Color customization
-with form.expander("🎨 Advanced Color Customization", expanded=False):
-    if style != st.session_state["previous_style"]:
-        st.session_state.update(get_colors_from_style(style))
-
-    draw_settings = copy.deepcopy(STYLES[style])
-    cols = st.columns(3)
-    color_picker_index = 0
-
-    for lc_class in st.session_state.lc_classes:
-        with cols[color_picker_index % 3]:
-            picked_color = st.color_picker(
-                lc_class.replace("_", " ").title(),
-                key=lc_class
-            )
-            if "_" in lc_class:
-                class_part, idx = lc_class.split("_")
-                draw_settings[class_part]["cmap"][int(idx)] = picked_color
-            else:
-                draw_settings[lc_class]["fc"] = picked_color
-        color_picker_index += 1
-
 form.form_submit_button(label="Generate Map", type="primary")
 
 # Main map generation
 if st.session_state.get("address"):
     try:
         with st.spinner("Creating your masterpiece... (may take up to a minute)"):
+            # Get area of interest
             rectangular = shape != "circle"
             aoi = get_aoi(address=address, radius=radius, rectangular=rectangular)
+
+            # Get OSM geometries
             df = st_get_osm_geometries(aoi=aoi)
 
+            # Configuration
+            draw_settings = STYLES[style]  # Default style config without modification
             config = {
                 "aoi_bounds": aoi.bounds,
                 "draw_settings": draw_settings,
@@ -196,14 +176,19 @@ if st.session_state.get("address"):
                 "bg_color": bg_color,
             }
 
+            # Generate plot
             fig = st_plot_all(_df=df, **config)
+
+            # Display plot
             st.pyplot(fig, pad_inches=0, bbox_inches="tight", transparent=True, dpi=300)
 
+            # Download section
             st.markdown("---")
             with st.container(border=True):
-                st.markdown("### 📅 Export Options")
-                col_d1, col_d2 = st.columns(2)
+                st.markdown("### 📥 Export Options")
 
+                # Image download
+                col_d1, col_d2 = st.columns(2)
                 with col_d1:
                     with st.expander("🖼️ Download Image"):
                         img_format = st.selectbox(
@@ -221,6 +206,7 @@ if st.session_state.get("address"):
                             mime=f"image/{img_format}"
                         )
 
+                # Data export
                 with col_d2:
                     with st.expander("📁 Export Data"):
                         st.download_button(
