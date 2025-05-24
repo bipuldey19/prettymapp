@@ -257,6 +257,9 @@ with form:
    # ... (keep all previous imports and setup code)
 
 # Modified Map Generation Section
+# ... (keep all previous imports and setup code)
+
+# Modified Map Generation Section
 if form.form_submit_button("🖼️ Generate Map", type="primary"):
     if not address and 'uploaded_gdf' not in st.session_state:
         st.warning("Please select a location or upload boundaries")
@@ -282,7 +285,8 @@ if form.form_submit_button("🖼️ Generate Map", type="primary"):
                     config['aoi_bounds'] = aoi.bounds
 
                 # Generate base plot
-                fig, ax = st_plot_all(gdf, **config)
+                fig = st_plot_all(gdf, **config)
+                ax = fig.gca()  # Get current axes
                 
                 # Add feature names if enabled
                 if show_feature_names:
@@ -302,7 +306,7 @@ if form.form_submit_button("🖼️ Generate Map", type="primary"):
                 if show_legend:
                     legend_elements = [
                         Patch(facecolor=STYLES[selected_style][ft]['fc'], 
-                              label=legend_labels.get(ft, ft))
+                        label=legend_labels.get(ft, ft))
                         for ft in ['building', 'water', 'green', 'park', 'highway']
                         if ft in STYLES[selected_style]
                     ]
@@ -324,6 +328,8 @@ if form.form_submit_button("🖼️ Generate Map", type="primary"):
             except Exception as e:
                 st.error(f"Map creation failed: {str(e)}")
                 st.error("Try adjusting the location or radius")
+
+# ... (rest of the code remains the same)
 
 # ... (rest of the code remains the same)
 # GPS listener
