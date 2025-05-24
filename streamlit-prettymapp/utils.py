@@ -12,14 +12,6 @@ from geopandas import GeoDataFrame
 from shapely.geometry import Polygon
 
 from prettymapp.plotting import Plot
-
-original_init = Plot.__init__
-
-def new_init(self, *args, **kwargs):
-    original_init(self, *args, **kwargs)
-    self.texts = [t for t in self.texts if "© OpenStreetMap" not in t.get_text()]
-
-Plot.__init__ = new_init
 from prettymapp.osm import get_osm_geometries
 from prettymapp.settings import STYLES
 
