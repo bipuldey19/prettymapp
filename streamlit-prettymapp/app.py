@@ -6,6 +6,7 @@ import tempfile
 import os
 from io import BytesIO
 import zipfile
+from matplotlib.patches import Patch
 
 from utils import (
     st_get_osm_geometries,
@@ -221,14 +222,11 @@ if st.session_state.search_results:
 form = st.form(key="main_form")
 selected_style = create_style_selector()
 
-# ... (keep all previous imports and setup code)
-
-# Modified Main Form Section
 with form:
     col1, col2 = st.columns(2)
     address = col1.text_input("Location Name", key="address")
     radius = col2.slider("Radius (meters)", 100, 2000, 500)
-    custom_title = st.text_input("Custom Title", key="custom_title")
+    custom_title = st.text_input("Custom Title", key="custom_title", value="My Custom Map")
     
     with st.expander("⚙️ Advanced Settings"):
         bg_color = st.color_picker("Background Color", "#ffffff")
@@ -236,14 +234,14 @@ with form:
         contour_width = st.slider("Border Width", 0, 10, 2)
         font_size = st.slider("Title Size", 8, 40, 16)
         
-        # New legend and feature controls
+        # Visualization controls
         show_legend = st.checkbox("Show Legend", True)
         show_feature_names = st.checkbox("Show Feature Names", False)
         show_copyright = st.checkbox("Show Copyright Info", False)
 
     # Legend customization
+    legend_labels = {}
     with st.expander("📖 Edit Legend Labels"):
-        legend_labels = {}
         if 'uploaded_gdf' in st.session_state:
             unique_features = st.session_state.uploaded_gdf['feature_type'].unique()
         else:
@@ -268,8 +266,8 @@ with form:
                         'shape': shape,
                         'contour_width': contour_width,
                         'font_size': font_size,
-                        'name': custom_title or "Custom Map",
-                        'name_on': True,  # Ensure title is shown
+                        'name': custom_title,
+                        'name_on': True,
                         'show_legend': show_legend,
                         'legend_labels': legend_labels,
                         'show_feature_names': show_feature_names,
@@ -285,52 +283,27 @@ with form:
                         config['aoi_bounds'] = aoi.bounds
 
                     fig = st_plot_all(gdf, **config)
+                    
+                    # Add feature names if enabled
+                    if show_feature_names:
+                        for _, row in gdf.iterrows():
+                            if 'name' in row and pd.notnull(row['name']):
+                                plt.text(
+                                    row.geometry.centroid.x,
+                                    row.geometry.centroid.y,
+                                    row['name'],
+                                    fontsize=8,
+                                    ha='center',
+                                    va='center',
+                                    color='black'
+                                )
+
                     st.pyplot(fig)
                     status.update(label="Map created successfully!", state="complete")
                     
                 except Exception as e:
                     st.error(f"Map creation failed: {str(e)}")
                     st.error("Try adjusting the location or radius")
-
-# ... (rest of the previous code remains the same)
-
-    # In the map creation section, modify the code to:
-if form.form_submit_button("🖼️ Generate Map", type="primary"):
-    if not address and 'uploaded_gdf' not in st.session_state:
-        st.warning("Please select a location or upload boundaries")
-    else:
-        with st.status("Creating map...", expanded=True) as status:
-            try:
-                config = {
-                    'draw_settings': STYLES[selected_style],
-                    'bg_color': bg_color,
-                    'shape': shape,
-                    'contour_width': contour_width,
-                    'font_size': font_size,
-                    'name': custom_title or None
-                }
-
-                if 'uploaded_gdf' in st.session_state:
-                    gdf = st.session_state.uploaded_gdf
-                    # Calculate bounds from uploaded geometry
-                    config['aoi_bounds'] = gdf.total_bounds
-                    if not config['name']:
-                        config['name'] = "Custom Area"
-                else:
-                    aoi = get_aoi(address=address, radius=radius)
-                    gdf = st_get_osm_geometries(aoi)
-                    # Get bounds from address-based AOI
-                    config['aoi_bounds'] = aoi.bounds
-                    if not config['name']:
-                        config['name'] = address
-
-                fig = st_plot_all(gdf, **config)
-                st.pyplot(fig)
-                status.update(label="Map created successfully!", state="complete")
-                
-            except Exception as e:
-                st.error(f"Map creation failed: {str(e)}")
-                st.error("Try adjusting the location or radius")
 
 # GPS listener
 if not hasattr(st.session_state, 'gps_listener_added'):
