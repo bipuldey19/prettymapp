@@ -91,6 +91,16 @@ def search_locations(query, limit=5):
         st.error(f"Search error: {str(e)}")
         return []
 
+# Add this to your code before the main form section
+@st.cache_data(
+    show_spinner=False, 
+    hash_funcs={Polygon: lambda x: json.dumps(x.__geo_interface__)}
+)
+def st_get_osm_geometries(aoi):
+    """Wrapper to enable streamlit caching for package function"""
+    df = get_osm_geometries(aoi=aoi)
+    return df
+
 def process_uploaded_file(uploaded_file):
     try:
         if uploaded_file.name.endswith('.kml'):
