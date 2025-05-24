@@ -7,6 +7,7 @@ import streamlit as st
 from matplotlib import pyplot as plt
 from shapely.geometry import Polygon
 import geopandas as gpd
+import yaml
 
 from utils import (
     st_get_osm_geometries,
@@ -159,7 +160,7 @@ if st.session_state.get("address"):
             df = st_get_osm_geometries(aoi=aoi)
 
             # Configuration
-            draw_settings = STYLES[style]  # Default style config without modification
+            draw_settings = copy.deepcopy(STYLES[style])
             config = {
                 "aoi_bounds": aoi.bounds,
                 "draw_settings": draw_settings,
@@ -175,6 +176,19 @@ if st.session_state.get("address"):
                 "bg_buffer": bg_buffer,
                 "bg_color": bg_color,
             }
+
+            # Merge uploaded YAML config if available
+            if uploaded_yml:
+                uploaded_config = yaml.safe_load(uploaded_yml)
+                config.update(uploaded_config)
+
+            # Handle SHP file (optional feature)
+            if uploaded_shp:
+                try:
+                    gdf = gpd.read_file(uploaded_shp)
+                    df = gdf  # Use shapefile geometry instead of OSM
+                except Exception as e:
+                    st.warning("Failed to read SHP file: " + str(e))
 
             # Generate plot
             fig = st_plot_all(_df=df, **config)
