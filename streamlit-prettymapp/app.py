@@ -4,7 +4,6 @@ import base64
 import io
 from io import BytesIO
 import streamlit as st
-from streamlit_image_select import image_select
 from matplotlib import pyplot as plt
 from matplotlib.pyplot import figure
 from shapely.geometry import Polygon
@@ -27,42 +26,20 @@ st.set_page_config(
     page_icon="🖼️", 
     initial_sidebar_state="collapsed"
 )
-st.markdown("# 🗺️ Prettymapp - Advanced Map Creator")
 
-# Load examples
-with open("./streamlit-prettymapp/examples.json", "r", encoding="utf8") as f:
-    EXAMPLES = json.load(f)
+st.markdown("# 🗜️ Prettymapp - Advanced Map Creator")
 
-# Replace the existing session state initialization with:
+# Initialize session state
+if "address" not in st.session_state:
+    st.session_state["address"] = ""
 
-# Initialize session state with required keys
-if "previous_example_index" not in st.session_state:
-    st.session_state["previous_example_index"] = 0
 if "previous_style" not in st.session_state:
     st.session_state["previous_style"] = "Peach"
+
 if "lc_classes" not in st.session_state:
     lc_class_colors = get_colors_from_style("Peach")
     st.session_state.lc_classes = list(lc_class_colors.keys())
     st.session_state.update(lc_class_colors)
-
-# Then load example data if not already loaded
-if "address" not in st.session_state:
-    st.session_state.update(EXAMPLES["Macau"])
-
-# Modify the example selection code to:
-index_selected = image_select(
-    "",
-    images=example_image_fp,
-    captions=list(EXAMPLES.keys())[:4],
-    index=st.session_state.get("previous_example_index", 0),
-    return_value="index",
-)
-
-# Update the comparison to handle missing key
-if index_selected != st.session_state.get("previous_example_index", 0):
-    name_selected = list(EXAMPLES.keys())[index_selected]
-    st.session_state.update(EXAMPLES[name_selected].copy())
-    st.session_state["previous_example_index"] = index_selected
 
 # Main form
 form = st.form(key="main_form")
@@ -175,11 +152,11 @@ with form.expander("⚙️ Advanced Customization", expanded=False):
 with form.expander("🎨 Advanced Color Customization", expanded=False):
     if style != st.session_state["previous_style"]:
         st.session_state.update(get_colors_from_style(style))
-    
+
     draw_settings = copy.deepcopy(STYLES[style])
     cols = st.columns(3)
     color_picker_index = 0
-    
+
     for lc_class in st.session_state.lc_classes:
         with cols[color_picker_index % 3]:
             picked_color = st.color_picker(
@@ -199,14 +176,10 @@ form.form_submit_button(label="Generate Map", type="primary")
 if st.session_state.get("address"):
     try:
         with st.spinner("Creating your masterpiece... (may take up to a minute)"):
-            # Get area of interest
             rectangular = shape != "circle"
             aoi = get_aoi(address=address, radius=radius, rectangular=rectangular)
-            
-            # Get OSM geometries
             df = st_get_osm_geometries(aoi=aoi)
-            
-            # Configuration
+
             config = {
                 "aoi_bounds": aoi.bounds,
                 "draw_settings": draw_settings,
@@ -223,19 +196,14 @@ if st.session_state.get("address"):
                 "bg_color": bg_color,
             }
 
-            # Generate plot
             fig = st_plot_all(_df=df, **config)
-            
-            # Display plot
             st.pyplot(fig, pad_inches=0, bbox_inches="tight", transparent=True, dpi=300)
-            
-            # Download section
+
             st.markdown("---")
             with st.container(border=True):
-                st.markdown("### 📥 Export Options")
-                
-                # Image download
+                st.markdown("### 📅 Export Options")
                 col_d1, col_d2 = st.columns(2)
+
                 with col_d1:
                     with st.expander("🖼️ Download Image"):
                         img_format = st.selectbox(
@@ -245,15 +213,14 @@ if st.session_state.get("address"):
                         )
                         img_buffer = BytesIO()
                         fig.savefig(img_buffer, format=img_format, 
-                                  bbox_inches="tight", pad_inches=0, dpi=300)
+                                    bbox_inches="tight", pad_inches=0, dpi=300)
                         st.download_button(
                             label=f"Download .{img_format}",
                             data=img_buffer.getvalue(),
                             file_name=f"{slugify(address)}.{img_format}",
                             mime=f"image/{img_format}"
                         )
-                
-                # Data export
+
                 with col_d2:
                     with st.expander("📁 Export Data"):
                         st.download_button(
