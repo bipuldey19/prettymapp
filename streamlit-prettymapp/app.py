@@ -1,19 +1,22 @@
-import requests
-import time
-import streamlit as st
-import geopandas as gpd
-import tempfile
+import base64
+import io
+import json
 import os
-from io import BytesIO
+import re
+import tempfile
+import time
+import unicodedata
 import zipfile
-from matplotlib.patches import Patch
+from io import BytesIO, StringIO
+from typing import Any
 
-from utils import (
-    st_get_osm_geometries,
-    st_plot_all,
-    gdf_to_bytesio_geojson,
-)
+import geopandas as gpd
+import requests
+import streamlit as st
+from matplotlib.patches import Patch
+from shapely.geometry import Polygon
 from prettymapp.geo import get_aoi
+from prettymapp.plotting import Plot
 from prettymapp.settings import STYLES
 
 st.set_page_config(
@@ -41,29 +44,6 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.markdown("# 🗺️ Prettymapp - Beautiful Maps Made Easy")
-
-def get_user_location_js():
-    return """
-    <script>
-    function getCurrentLocation() {
-        if (navigator.geolocation) {
-            navigator.geolocation.getCurrentPosition(
-                function(position) {
-                    const lat = position.coords.latitude;
-                    const lon = position.coords.longitude;
-                    window.parent.document.dispatchEvent(
-                        new CustomEvent('gpsLocation', {detail: {lat: lat, lon: lon}})
-                    );
-                },
-                function(error) {
-                    console.error('Geolocation error:', error);
-                },
-                {enableHighAccuracy: true, timeout: 10000}
-            );
-        }
-    }
-    </script>
-    """
 
 @st.cache_data(ttl=300)
 def search_locations(query, limit=5):
@@ -151,14 +131,25 @@ def create_style_selector():
                 st.session_state.style = style
     return current_style
 
+@st.cache_data(show_spinner=False)
+def st_plot_all(_df: gpd.GeoDataFrame, **kwargs):
+    """Modified plotting function with copyright removal"""
+    plot = Plot(_df, **kwargs)
+    fig = plot.plot_all()
+    ax = fig.gca()
+    
+    # Remove default copyright text
+    for text in ax.texts:
+        if '© OpenStreetMap' in text.get_text():
+            text.set_visible(False)
+    
+    return fig
+
 # Initialize session state
 if 'search_results' not in st.session_state:
     st.session_state.search_results = []
 if 'location' not in st.session_state:
     st.session_state.location = {'lat': None, 'lon': None}
-
-# Geolocation setup
-st.components.v1.html(get_user_location_js(), height=0)
 
 # File upload section
 with st.expander("📁 Upload Custom Boundaries", expanded=False):
@@ -197,7 +188,26 @@ with col1:
 
 with col2:
     if st.button("📍 Use My Location"):
-        st.components.v1.html(get_user_location_js(), height=0)
+        st.components.v1.html("""
+        <script>
+        function getCurrentLocation() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    position => {
+                        const lat = position.coords.latitude;
+                        const lon = position.coords.longitude;
+                        window.parent.document.dispatchEvent(
+                            new CustomEvent('gpsLocation', {detail: {lat: lat, lon: lon}})
+                        );
+                    },
+                    error => console.error('Geolocation error:', error),
+                    {enableHighAccuracy: true, timeout: 10000}
+                );
+            }
+        }
+        getCurrentLocation();
+        </script>
+        """, height=0)
 
 # Display search results
 if st.session_state.search_results:
@@ -242,138 +252,106 @@ with form:
     # Legend customization
     legend_labels = {}
     with st.expander("📖 Edit Legend Labels"):
-        if 'uploaded_gdf' in st.session_state:
-            unique_features = st.session_state.uploaded_gdf['feature_type'].unique()
-        else:
-            unique_features = ['building', 'water', 'green', 'park', 'highway']
-            
-        for feature in unique_features:
+        default_features = ['building', 'water', 'green', 'park', 'highway']
+        for feature in default_features:
             legend_labels[feature] = st.text_input(
                 f"Label for {feature}",
                 value=feature.title(),
                 key=f"legend_{feature}"
             )
 
-# ... (keep previous imports and setup code)
+    if form.form_submit_button("🖼️ Generate Map", type="primary"):
+        if not address and 'uploaded_gdf' not in st.session_state:
+            st.warning("Please select a location or upload boundaries")
+        else:
+            with st.status("Creating map...", expanded=True) as status:
+                try:
+                    config = {
+                        'draw_settings': STYLES[selected_style],
+                        'bg_color': bg_color,
+                        'shape': shape,
+                        'contour_width': contour_width,
+                        'font_size': font_size,
+                        'name': custom_title,
+                        'name_on': True,
+                    }
 
-# Modified Map Generation Section with Legend and Title Styling
-if form.form_submit_button("🖼️ Generate Map", type="primary"):
-    if not address and 'uploaded_gdf' not in st.session_state:
-        st.warning("Please select a location or upload boundaries")
-    else:
-        with st.status("Creating map...", expanded=True) as status:
-            try:
-                config = {
-                    'draw_settings': STYLES[selected_style],
-                    'bg_color': bg_color,
-                    'shape': shape,
-                    'contour_width': contour_width,
-                    'font_size': font_size,
-                    'name': custom_title,
-                    'name_on': True,
-                }
+                    if 'uploaded_gdf' in st.session_state:
+                        gdf = st.session_state.uploaded_gdf
+                        config['aoi_bounds'] = gdf.total_bounds
+                    else:
+                        aoi = get_aoi(address=address, radius=radius)
+                        gdf = st_get_osm_geometries(aoi)
+                        config['aoi_bounds'] = aoi.bounds
 
-                if 'uploaded_gdf' in st.session_state:
-                    gdf = st.session_state.uploaded_gdf
-                    config['aoi_bounds'] = gdf.total_bounds
-                else:
-                    aoi = get_aoi(address=address, radius=radius)
-                    gdf = st_get_osm_geometries(aoi)
-                    config['aoi_bounds'] = aoi.bounds
+                    # Generate plot
+                    fig = st_plot_all(gdf, **config)
+                    ax = fig.gca()
 
-                # Generate base plot
-                fig = st_plot_all(gdf, **config)
-                ax = fig.gca()
-
-                # Add feature names if enabled
-                if show_feature_names:
-                    for _, row in gdf.iterrows():
-                        if 'name' in row and pd.notnull(row['name']):
-                            ax.text(
-                                row.geometry.centroid.x,
-                                row.geometry.centroid.y,
-                                row['name'],
-                                fontsize=8,
-                                ha='center',
-                                va='center',
-                                color='black',
-                                fontfamily='serif'
-                            )
-                
-                # Add legend if enabled
-                if show_legend:
-                    legend_elements = []
-                    for ft in ['building', 'water', 'green', 'park', 'highway']:
-                        if ft in STYLES[selected_style]:
-                            legend_elements.append(
-                                Patch(
-                                    facecolor=STYLES[selected_style][ft]['fc'],
-                                    label=legend_labels.get(ft, ft.title()),
-                                    edgecolor='black',
-                                    linewidth=0.5
+                    # Add feature names
+                    if show_feature_names:
+                        for _, row in gdf.iterrows():
+                            if 'name' in row and pd.notnull(row['name']):
+                                ax.text(
+                                    row.geometry.centroid.x,
+                                    row.geometry.centroid.y,
+                                    row['name'],
+                                    fontsize=8,
+                                    ha='center',
+                                    va='center',
+                                    color='black',
+                                    fontfamily='serif'
                                 )
-                            )
+
+                    # Add legend
+                    if show_legend:
+                        legend_elements = []
+                        for ft in ['building', 'water', 'green', 'park', 'highway']:
+                            if ft in STYLES[selected_style]:
+                                legend_elements.append(
+                                    Patch(
+                                        facecolor=STYLES[selected_style][ft]['fc'],
+                                        label=legend_labels.get(ft, ft.title()),
+                                        edgecolor='black',
+                                        linewidth=0.5
+                                    )
+                                )
+                        
+                        legend = ax.legend(
+                            handles=legend_elements,
+                            loc='upper right',
+                            bbox_to_anchor=(1, 1),
+                            prop={'family': 'serif', 'size': 10},
+                            title='Legend',
+                            title_fontproperties={'family': 'serif', 'weight': 'bold', 'size': 12},
+                            frameon=True,
+                            framealpha=0.9,
+                            edgecolor='black'
+                        )
+                        legend.get_frame().set_facecolor('#ffffff')
+
+                    # Style title
+                    if custom_title:
+                        ax.title.set_fontfamily('serif')
+                        ax.title.set_fontweight('bold')
+
+                    # Add custom copyright
+                    if show_copyright:
+                        ax.text(
+                            0.5, -0.05, "© OpenStreetMap contributors",
+                            ha='center', va='center',
+                            transform=ax.transAxes,
+                            fontsize=8,
+                            color='gray',
+                            fontfamily='serif'
+                        )
+
+                    st.pyplot(fig)
+                    status.update(label="Map created successfully!", state="complete")
                     
-                    # Position legend at top right with formal styling
-                    legend = ax.legend(
-                        handles=legend_elements,
-                        loc='upper right',
-                        bbox_to_anchor=(1, 1),
-                        prop={
-                            'family': 'serif',
-                            'size': 10
-                        },
-                        title='Legend',
-                        title_fontproperties={
-                            'family': 'serif',
-                            'weight': 'bold',
-                            'size': 12
-                        },
-                        frameon=True,
-                        framealpha=0.9,
-                        edgecolor='black'
-                    )
-                    legend.get_frame().set_facecolor('#ffffff')
-
-                # Style the main title
-                if custom_title:
-                    ax.title.set_fontfamily('serif')
-                    ax.title.set_fontweight('bold')
-                    ax.title.set_position([1, 1])  # Top right
-                    ax.title.set_ha('right')
-                    ax.title.set_va('bottom')
-
-                # Add copyright if enabled
-                if show_copyright:
-                    ax.text(
-                        0.5, -0.05, "© OpenStreetMap contributors",
-                        ha='center', va='center',
-                        transform=ax.transAxes,
-                        fontsize=8,
-                        color='gray',
-                        fontfamily='serif'
-                    )
-
-                st.pyplot(fig)
-                status.update(label="Map created successfully!", state="complete")
-                
-            except Exception as e:
-                st.error(f"Map creation failed: {str(e)}")
-                st.error("Try adjusting the location or radius")
-
-# GPS listener
-if not hasattr(st.session_state, 'gps_listener_added'):
-    st.components.v1.html("""
-    <script>
-    window.addEventListener('gpsLocation', function(e) {
-        const data = e.detail;
-        window.parent.document.dispatchEvent(
-            new CustomEvent('gpsReceived', {detail: data})
-        );
-    });
-    </script>
-    """, height=0)
-    st.session_state.gps_listener_added = True
+                except Exception as e:
+                    st.error(f"Map creation failed: {str(e)}")
+                    st.error("Try adjusting the location or radius")
 
 # Show GPS coordinates if available
 if st.session_state.location.get('lat'):
