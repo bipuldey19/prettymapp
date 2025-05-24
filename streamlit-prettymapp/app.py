@@ -33,29 +33,33 @@ st.markdown("# 🗺️ Prettymapp - Advanced Map Creator")
 with open("./streamlit-prettymapp/examples.json", "r", encoding="utf8") as f:
     EXAMPLES = json.load(f)
 
-# Initialize session state
-if not st.session_state:
-    st.session_state.update(EXAMPLES["Macau"])
+# Replace the existing session state initialization with:
+
+# Initialize session state with required keys
+if "previous_example_index" not in st.session_state:
+    st.session_state["previous_example_index"] = 0
+if "previous_style" not in st.session_state:
+    st.session_state["previous_style"] = "Peach"
+if "lc_classes" not in st.session_state:
     lc_class_colors = get_colors_from_style("Peach")
     st.session_state.lc_classes = list(lc_class_colors.keys())
     st.session_state.update(lc_class_colors)
-    st.session_state["previous_style"] = "Peach"
-    st.session_state["previous_example_index"] = 0
 
-# Example selection
-example_image_pattern = "streamlit-prettymapp/example_prints/{}_small.png"
-example_image_fp = [
-    example_image_pattern.format(name.lower()) for name in list(EXAMPLES.keys())[:4]
-]
+# Then load example data if not already loaded
+if "address" not in st.session_state:
+    st.session_state.update(EXAMPLES["Macau"])
+
+# Modify the example selection code to:
 index_selected = image_select(
     "",
     images=example_image_fp,
     captions=list(EXAMPLES.keys())[:4],
-    index=0,
+    index=st.session_state.get("previous_example_index", 0),
     return_value="index",
 )
 
-if index_selected != st.session_state["previous_example_index"]:
+# Update the comparison to handle missing key
+if index_selected != st.session_state.get("previous_example_index", 0):
     name_selected = list(EXAMPLES.keys())[index_selected]
     st.session_state.update(EXAMPLES[name_selected].copy())
     st.session_state["previous_example_index"] = index_selected
