@@ -14,6 +14,7 @@ import geopandas as gpd
 import pandas as pd
 import requests
 import streamlit as st
+from matplotlib import font_manager
 from matplotlib.patches import Patch
 from shapely.geometry import Polygon
 from prettymapp.geo import get_aoi
@@ -32,15 +33,12 @@ st.markdown("""
 <style>
 .location-search-container {
     background-color: #f0f2f6;
-    padding: 1rem;
+    padding: 1.5rem;
     border-radius: 0.5rem;
     margin-bottom: 1rem;
 }
-.file-upload-section {
-    background-color: #e8f4f8;
-    padding: 1rem;
-    border-radius: 0.5rem;
-    border-left: 4px solid #0066cc;
+.search-button {
+    margin-top: 1.5rem;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -193,12 +191,15 @@ with col1:
         key="search_input"
     )
     
-    if len(search_query) >= 3:
-        with st.spinner("Searching..."):
-            st.session_state.search_results = search_locations(search_query)
+    if st.button("🔍 Search", key="search_button", use_container_width=True):
+        if len(search_query) >= 3:
+            with st.spinner("Searching..."):
+                st.session_state.search_results = search_locations(search_query)
+        else:
+            st.warning("Please enter at least 3 characters to search")
 
 with col2:
-    if st.button("📍 Use My Location"):
+    if st.button("📍 Get Current Location", key="gps_button", use_container_width=True):
         st.components.v1.html("""
         <script>
         function getCurrentLocation() {
@@ -211,8 +212,17 @@ with col2:
                             new CustomEvent('gpsLocation', {detail: {lat: lat, lon: lon}})
                         );
                     },
-                    error => console.error('Geolocation error:', error),
+                    error => {
+                        console.error('Geolocation error:', error);
+                        window.parent.document.dispatchEvent(
+                            new CustomEvent('gpsError', {detail: error.message})
+                        );
+                    },
                     {enableHighAccuracy: true, timeout: 10000}
+                );
+            } else {
+                window.parent.document.dispatchEvent(
+                    new CustomEvent('gpsError', {detail: 'Geolocation not supported'})
                 );
             }
         }
@@ -247,29 +257,32 @@ with form:
     col1, col2 = st.columns(2)
     address = col1.text_input("Location Name", key="address")
     radius = col2.slider("Radius (meters)", 100, 2000, 500)
-    custom_title = st.text_input("Custom Title", key="custom_title", value="My Custom Map")
+    
+    with st.expander("✏️ Title Customization"):
+        custom_title = st.text_input("Map Title", value="My Custom Map")
+        title_font_size = st.slider("Title Font Size", 8, 40, 16)
+        title_font_family = st.selectbox(
+            "Font Family",
+            ["serif", "sans-serif", "monospace", "cursive", "fantasy"],
+            index=0
+        )
+        title_font_weight = st.selectbox(
+            "Font Weight",
+            ["normal", "bold"],
+            index=0
+        )
+        title_font_style = st.selectbox(
+            "Font Style",
+            ["normal", "italic"],
+            index=0
+        )
     
     with st.expander("⚙️ Advanced Settings"):
         bg_color = st.color_picker("Background Color", "#ffffff")
         shape = st.selectbox("Map Shape", ["circle", "rectangle"])
         contour_width = st.slider("Border Width", 0, 10, 2)
-        font_size = st.slider("Title Size", 8, 40, 16)
-        
-        # Visualization controls
-        show_legend = st.checkbox("Show Legend", True)
         show_feature_names = st.checkbox("Show Feature Names", False)
         show_copyright = st.checkbox("Show Copyright Info", False)
-
-    # Legend customization
-    legend_labels = {}
-    with st.expander("📖 Edit Legend Labels"):
-        default_features = ['building', 'water', 'green', 'park', 'highway']
-        for feature in default_features:
-            legend_labels[feature] = st.text_input(
-                f"Label for {feature}",
-                value=feature.title(),
-                key=f"legend_{feature}"
-            )
 
     if form.form_submit_button("🖼️ Generate Map", type="primary"):
         if not address and 'uploaded_gdf' not in st.session_state:
@@ -282,9 +295,12 @@ with form:
                         'bg_color': bg_color,
                         'shape': shape,
                         'contour_width': contour_width,
-                        'font_size': font_size,
                         'name': custom_title,
                         'name_on': True,
+                        'font_size': title_font_size,
+                        'font_family': title_font_family,
+                        'font_weight': title_font_weight,
+                        'font_style': title_font_style
                     }
 
                     if 'uploaded_gdf' in st.session_state:
@@ -298,6 +314,13 @@ with form:
                     # Generate plot
                     fig = st_plot_all(gdf, **config)
                     ax = fig.gca()
+
+                    # Customize title position and style
+                    ax.title.set_position([0.01, 1.05])  # Top-left position
+                    ax.title.set_fontfamily(title_font_family)
+                    ax.title.set_fontsize(title_font_size)
+                    ax.title.set_fontweight(title_font_weight)
+                    ax.title.set_style(title_font_style)
 
                     # Add feature names
                     if show_feature_names:
@@ -313,38 +336,6 @@ with form:
                                     color='black',
                                     fontfamily='serif'
                                 )
-
-                    # Add legend
-                    if show_legend:
-                        legend_elements = []
-                        for ft in ['building', 'water', 'green', 'park', 'highway']:
-                            if ft in STYLES[selected_style]:
-                                legend_elements.append(
-                                    Patch(
-                                        facecolor=STYLES[selected_style][ft]['fc'],
-                                        label=legend_labels.get(ft, ft.title()),
-                                        edgecolor='black',
-                                        linewidth=0.5
-                                    )
-                                )
-                        
-                        legend = ax.legend(
-                            handles=legend_elements,
-                            loc='upper right',
-                            bbox_to_anchor=(1, 1),
-                            prop={'family': 'serif', 'size': 10},
-                            title='Legend',
-                            title_fontproperties={'family': 'serif', 'weight': 'bold', 'size': 12},
-                            frameon=True,
-                            framealpha=0.9,
-                            edgecolor='black'
-                        )
-                        legend.get_frame().set_facecolor('#ffffff')
-
-                    # Style title
-                    if custom_title:
-                        ax.title.set_fontfamily('serif')
-                        ax.title.set_fontweight('bold')
 
                     # Add custom copyright
                     if show_copyright:
@@ -364,6 +355,12 @@ with form:
                     st.error(f"Map creation failed: {str(e)}")
                     st.error("Try adjusting the location or radius")
 
-# Show GPS coordinates if available
+# GPS location handling
 if st.session_state.location.get('lat'):
-    st.write(f"GPS Coordinates: {st.session_state.location['lat']:.4f}, {st.session_state.location['lon']:.4f}")
+    st.write(f"📍 Current Location Coordinates: {st.session_state.location['lat']:.4f}, {st.session_state.location['lon']:.4f}")
+    st.write("Click a search result to use these coordinates")
+
+# GPS error handling
+if 'gps_error' in st.session_state:
+    st.error(f"Location Error: {st.session_state.gps_error}")
+    del st.session_state.gps_error
