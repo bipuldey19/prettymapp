@@ -8,3 +8,9 @@ geopy
 geopandas
 fiona
 shapely
+streamlit
+prettymapp
+geopandas
+shapely
+matplotlib
+requests
