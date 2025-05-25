@@ -22,7 +22,7 @@ from prettymapp.geo import get_aoi
 from prettymapp.osm import get_osm_geometries
 from prettymapp.plotting import Plot
 from prettymapp.settings import STYLES
-from prettymapp.utils import get_colors_from_style
+from utils import get_colors_from_style
 
 st.set_page_config(
     page_title="prettymapp", 
