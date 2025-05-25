@@ -72,6 +72,7 @@ if not st.session_state:
     st.session_state["previous_style"] = "Peach"
     st.session_state["search_query"] = ""
     st.session_state["selected_location"] = None
+    st.session_state["draw_settings"] = copy.deepcopy(STYLES["Peach"])
 
 st.write("")
 form = st.form(key="form_settings")
@@ -88,6 +89,7 @@ search_query = col1.text_input(
 if search_query and len(search_query) >= 2:
     search_results = search_locations(search_query)
     if search_results:
+        # Display results in a more detailed format
         selected_location = col1.selectbox(
             "Select location",
             options=search_results,
@@ -96,10 +98,16 @@ if search_query and len(search_query) >= 2:
         )
         if selected_location:
             address = selected_location['full']
+            # Show additional details about the selected location
+            col1.markdown(f"**Selected Location Details:**")
+            col1.markdown(f"📍 {selected_location['display']}")
+            col1.markdown(f"🌍 {selected_location['type']}")
+            col1.markdown(f"📌 {selected_location['full']}")
         else:
             address = search_query
     else:
         address = search_query
+        col1.info("No locations found. Try a different search term.")
 else:
     address = search_query
 
@@ -115,6 +123,16 @@ style: str = col3.selectbox(
     options=list(STYLES.keys()),
     key="style",
 )
+
+# Update theme colors when style changes
+if style != st.session_state["previous_style"]:
+    lc_class_colors = get_colors_from_style(style)
+    st.session_state.lc_classes = list(lc_class_colors.keys())  # type: ignore
+    st.session_state.update(lc_class_colors)
+    st.session_state["draw_settings"] = copy.deepcopy(STYLES[style])
+    st.session_state["previous_style"] = style
+
+draw_settings = st.session_state["draw_settings"]
 
 expander = form.expander("Customize map style")
 col1style, col2style, _, col3style = expander.columns([2, 2, 0.1, 1])
@@ -196,9 +214,6 @@ text_rotation = col2style.slider(
     key="text_rotation",
 )
 
-if style != st.session_state["previous_style"]:
-    st.session_state.update(get_colors_from_style(style))  # type: ignore
-draw_settings = copy.deepcopy(STYLES[style])
 for lc_class in st.session_state.lc_classes:
     picked_color = col3style.color_picker(lc_class, key=lc_class)
     if "_" in lc_class:
@@ -278,5 +293,3 @@ st.write(
 st.markdown(
     "More infos and :star: at [github.com/chrieke/prettymapp](https://github.com/chrieke/prettymapp)"
 )
-
-st.session_state["previous_style"] = style
