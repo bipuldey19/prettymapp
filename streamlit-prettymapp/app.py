@@ -46,22 +46,6 @@ st.markdown("""
 
 st.markdown("# 🗺️ Prettymapp - Beautiful Maps Made Easy")
 
-# Initialize session state
-if not st.session_state:
-    st.session_state.update(EXAMPLES["Macau"])
-    lc_class_colors = get_colors_from_style("Peach")
-    st.session_state.lc_classes = list(lc_class_colors.keys())  # type: ignore
-    st.session_state.update(lc_class_colors)
-    st.session_state["previous_style"] = "Peach"
-    st.session_state["previous_example_index"] = 0
-
-# Ensure previous_style exists
-if "previous_style" not in st.session_state:
-    st.session_state["previous_style"] = "Peach"
-
-with open("./streamlit-prettymapp/examples.json", "r", encoding="utf8") as f:
-    EXAMPLES = json.load(f)
-
 @st.cache_data(
     show_spinner=False, 
     hash_funcs={Polygon: lambda x: json.dumps(x.__geo_interface__)}
@@ -153,30 +137,6 @@ def process_uploaded_file(uploaded_file):
         st.error(f"File processing failed: {str(e)}")
     return None
 
-def create_style_selector():
-    st.markdown("#### 🎨 Choose Your Map Style")
-    cols = st.columns(4)
-    styles = list(STYLES.keys())
-    
-    current_style = st.session_state.get('style', 'Peach')
-    
-    for idx, style in enumerate(styles):
-        with cols[idx % 4]:
-            if st.button(
-                f"🏞️ {style}",
-                key=f"style_btn_{style}",
-                use_container_width=True,
-                type="primary" if style == current_style else "secondary"
-            ):
-                st.session_state.style = style
-    return current_style
-
-# Initialize session state
-if 'search_results' not in st.session_state:
-    st.session_state.search_results = []
-if 'location' not in st.session_state:
-    st.session_state.location = {'lat': None, 'lon': None}
-
 # File upload section
 with st.expander("📁 Upload Custom Boundaries", expanded=False):
     uploaded_file = st.file_uploader(
@@ -187,15 +147,10 @@ with st.expander("📁 Upload Custom Boundaries", expanded=False):
     
     if uploaded_file:
         with st.spinner("Processing file..."):
-            if gdf := process_uploaded_file(uploaded_file):
-                st.session_state.uploaded_gdf = gdf
-                st.success(f"Loaded {len(gdf)} features")
-                st.map(gdf)
-    
-    if 'uploaded_gdf' in st.session_state:
-        if st.button("Clear Uploaded Data"):
-            del st.session_state.uploaded_gdf
-            st.rerun()
+            uploaded_gdf = process_uploaded_file(uploaded_file)
+            if uploaded_gdf is not None:
+                st.success(f"Loaded {len(uploaded_gdf)} features")
+                st.map(uploaded_gdf)
 
 # Location search
 st.markdown("### 🔍 Location Search")
@@ -205,18 +160,17 @@ with col1:
     search_query = st.text_input(
         "Search address or place name:",
         placeholder="E.g. 'Central Park NYC', 'Tokyo Station'...",
-        key="search_input"
     )
     
-    if st.button("🔍 Search", key="search_button", use_container_width=True):
+    if st.button("🔍 Search", use_container_width=True):
         if len(search_query) >= 3:
             with st.spinner("Searching..."):
-                st.session_state.search_results = search_locations(search_query)
+                search_results = search_locations(search_query)
         else:
             st.warning("Please enter at least 3 characters to search")
 
 with col2:
-    if st.button("📍 Get Current Location", key="gps_button", use_container_width=True):
+    if st.button("📍 Get Current Location", use_container_width=True):
         st.components.v1.html("""
         <script>
         function getCurrentLocation() {
@@ -248,22 +202,19 @@ with col2:
         """, height=0)
 
 # Display search results
-if st.session_state.search_results:
+if 'search_results' in locals() and search_results:
     st.markdown("**🔍 Search Results:**")
-    for idx, result in enumerate(st.session_state.search_results):
+    selected_location = None
+    for idx, result in enumerate(search_results):
         cols = st.columns([4, 1])
         display_text = result.get('display', 'Location')
         
-        cols[0].button(
+        if cols[0].button(
             f"📍 {display_text}",
             key=f"result_{idx}",
-            use_container_width=True,
-            on_click=lambda r=result: st.session_state.update({
-                'address': r.get('full', ''),
-                'lat': r.get('lat', 0),
-                'lon': r.get('lon', 0)
-            })
-        )
+            use_container_width=True
+        ):
+            selected_location = result
         cols[1].markdown(f"_{result.get('type', 'location')}_")
 
 # Main form
@@ -272,24 +223,19 @@ col1, col2, col3 = form.columns([3, 1, 1])
 
 address = col1.text_input(
     "Location address",
-    key="address",
+    value=selected_location.get('full', '') if 'selected_location' in locals() and selected_location else ''
 )
 radius = col2.slider(
     "Radius (meter)",
     100,
     1500,
-    key="radius",
+    500
 )
 
 style: str = col3.selectbox(
     "Color theme",
-    options=list(STYLES.keys()),
-    key="style",
+    options=list(STYLES.keys())
 )
-
-if style != st.session_state["previous_style"]:
-    st.session_state.update(get_colors_from_style(style))  # type: ignore
-    st.session_state["previous_style"] = style
 
 expander = form.expander("Customize map style")
 col1style, col2style, _, col3style = expander.columns([2, 2, 0.1, 1])
@@ -297,83 +243,71 @@ col1style, col2style, _, col3style = expander.columns([2, 2, 0.1, 1])
 shape_options = ["circle", "rectangle"]
 shape = col1style.radio(
     "Map Shape",
-    options=shape_options,
-    key="shape",
+    options=shape_options
 )
 
 bg_shape_options = ["rectangle", "circle", None]
 bg_shape = col1style.radio(
     "Background Shape",
-    options=bg_shape_options,
-    key="bg_shape",
+    options=bg_shape_options
 )
 bg_color = col1style.color_picker(
-    "Background Color",
-    key="bg_color",
+    "Background Color"
 )
 bg_buffer = col1style.slider(
     "Background Size",
     min_value=0,
     max_value=50,
-    help="How much the background extends beyond the figure.",
-    key="bg_buffer",
+    help="How much the background extends beyond the figure."
 )
 
 col1style.markdown("---")
 contour_color = col1style.color_picker(
-    "Map contour color",
-    key="contour_color",
+    "Map contour color"
 )
 contour_width = col1style.slider(
     "Map contour width",
     0,
     30,
-    help="Thickness of contour line sourrounding the map.",
-    key="contour_width",
+    help="Thickness of contour line sourrounding the map."
 )
 
 name_on = col2style.checkbox(
     "Display title",
-    help="If checked, adds the selected address as the title. Can be customized below.",
-    key="name_on",
+    help="If checked, adds the selected address as the title. Can be customized below."
 )
 custom_title = col2style.text_input(
     "Custom title (optional)",
-    max_chars=30,
-    key="custom_title",
+    max_chars=30
 )
 font_size = col2style.slider(
     "Title font size",
     min_value=1,
-    max_value=50,
-    key="font_size",
+    max_value=50
 )
 font_color = col2style.color_picker(
-    "Title font color",
-    key="font_color",
+    "Title font color"
 )
 text_x = col2style.slider(
     "Title left/right",
     -100,
-    100,
-    key="text_x",
+    100
 )
 text_y = col2style.slider(
     "Title top/bottom",
     -100,
-    100,
-    key="text_y",
+    100
 )
 text_rotation = col2style.slider(
     "Title rotation",
     -90,
-    90,
-    key="text_rotation",
+    90
 )
 
 draw_settings = copy.deepcopy(STYLES[style])
-for lc_class in st.session_state.lc_classes:
-    picked_color = col3style.color_picker(lc_class, key=lc_class)
+lc_classes = list(get_colors_from_style(style).keys())
+for lc_class in lc_classes:
+    picked_color = col3style.color_picker(lc_class)
     if "_" in lc_class:
         lc_class, idx = lc_class.split("_")
         draw_settings[lc_class]["cmap"][int(idx)] = picked_color  # type: ignore
@@ -381,7 +315,7 @@ for lc_class in st.session_state.lc_classes:
         draw_settings[lc_class]["fc"] = picked_color
 
 if form.form_submit_button("🖼️ Generate Map", type="primary"):
-    if not address and 'uploaded_gdf' not in st.session_state:
+    if not address and 'uploaded_gdf' not in locals():
         st.warning("Please select a location or upload boundaries")
     else:
         with st.status("Creating map...", expanded=True) as status:
@@ -391,13 +325,20 @@ if form.form_submit_button("🖼️ Generate Map", type="primary"):
                     'bg_color': bg_color,
                     'shape': shape,
                     'contour_width': contour_width,
-                    'name': address,
+                    'name': address if custom_title == "" else custom_title,
                     'name_on': name_on,
                     'font_size': font_size,
+                    'font_color': font_color,
+                    'text_x': text_x,
+                    'text_y': text_y,
+                    'text_rotation': text_rotation,
+                    'bg_shape': bg_shape,
+                    'bg_buffer': bg_buffer,
+                    'contour_color': contour_color,
                 }
 
-                if 'uploaded_gdf' in st.session_state:
-                    gdf = st.session_state.uploaded_gdf
+                if 'uploaded_gdf' in locals():
+                    gdf = uploaded_gdf
                     config['aoi_bounds'] = gdf.total_bounds
                 else:
                     aoi = get_aoi(address=address, radius=radius)
@@ -406,46 +347,30 @@ if form.form_submit_button("🖼️ Generate Map", type="primary"):
 
                 # Generate plot
                 fig = st_plot_all(gdf, **config)
-                ax = fig.gca()
-
-                # Customize title styling
-                if address:
-                    title = ax.title
-                    title.set_position([0.01, 1.05])  # Top-left position
-                    title.set_fontweight("bold")
-
-                # Add feature names
-                if show_feature_names:
-                    for _, row in gdf.iterrows():
-                        if 'name' in row and pd.notnull(row['name']):
-                            ax.text(
-                                row.geometry.centroid.x,
-                                row.geometry.centroid.y,
-                                row['name'],
-                                fontsize=8,
-                                ha='center',
-                                va='center',
-                                color='black',
-                                fontweight='bold'
-                            )
-
-                # Add custom copyright
-                if show_copyright:
-                    ax.text(
-                        0.5, -0.05, "© OpenStreetMap contributors",
-                        ha='center', va='center',
-                        transform=ax.transAxes,
-                        fontsize=8,
-                        color='gray',
-                        fontweight='bold'
-                    )
-
                 st.pyplot(fig)
                 status.update(label="Map created successfully!", state="complete")
                 
             except Exception as e:
                 st.error(f"Map creation failed: {str(e)}")
                 st.error("Try adjusting the location or radius")
+
+# Export section
+st.markdown("### 📤 Export")
+ex1, ex2 = st.columns(2)
+
+with ex1.expander("Export geometries as GeoJSON"):
+    if 'gdf' in locals():
+        st.write(f"{gdf.shape[0]} geometries")
+        st.download_button(
+            label="Download",
+            data=gdf_to_bytesio_geojson(gdf),
+            file_name=f"prettymapp_{address[:10]}.geojson",
+            mime="application/geo+json",
+        )
+
+with ex2.expander("Export map configuration"):
+    if 'config' in locals():
+        st.write(config)
 
 # GPS location handling
 if st.session_state.location.get('lat'):
