@@ -170,38 +170,6 @@ with col1:
         else:
             st.warning("Please enter at least 3 characters to search")
 
-with col2:
-    if st.button("📍 Get Current Location", use_container_width=True):
-        st.components.v1.html("""
-        <script>
-        function getCurrentLocation() {
-            if (navigator.geolocation) {
-                navigator.geolocation.getCurrentPosition(
-                    position => {
-                        const lat = position.coords.latitude;
-                        const lon = position.coords.longitude;
-                        window.parent.document.dispatchEvent(
-                            new CustomEvent('gpsLocation', {detail: {lat: lat, lon: lon}})
-                        );
-                    },
-                    error => {
-                        console.error('Geolocation error:', error);
-                        window.parent.document.dispatchEvent(
-                            new CustomEvent('gpsError', {detail: error.message})
-                        );
-                    },
-                    {enableHighAccuracy: true, timeout: 10000}
-                );
-            } else {
-                window.parent.document.dispatchEvent(
-                    new CustomEvent('gpsError', {detail: 'Geolocation not supported'})
-                );
-            }
-        }
-        getCurrentLocation();
-        </script>
-        """, height=0)
-
 # Display search results
 if 'search_results' in locals() and search_results:
     st.markdown("**🔍 Search Results:**")
@@ -364,23 +332,13 @@ ex1, ex2 = st.columns(2)
 with ex1.expander("Export geometries as GeoJSON"):
     if 'gdf' in locals():
         st.write(f"{gdf.shape[0]} geometries")
-        st.download_button(
-            label="Download",
-            data=gdf_to_bytesio_geojson(gdf),
-            file_name=f"prettymapp_{address[:10]}.geojson",
-            mime="application/geo+json",
-        )
+    st.download_button(
+        label="Download",
+        data=gdf_to_bytesio_geojson(gdf),
+        file_name=f"prettymapp_{address[:10]}.geojson",
+        mime="application/geo+json",
+    )
 
 with ex2.expander("Export map configuration"):
     if 'config' in locals():
         st.write(config)
-
-# GPS location handling
-if st.session_state.location.get('lat'):
-    st.write(f"📍 Current Location Coordinates: {st.session_state.location['lat']:.4f}, {st.session_state.location['lon']:.4f}")
-    st.write("Click a search result to use these coordinates")
-
-# GPS error handling
-if 'gps_error' in st.session_state:
-    st.error(f"Location Error: {st.session_state.gps_error}")
-    del st.session_state.gps_error
