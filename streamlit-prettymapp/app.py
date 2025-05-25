@@ -335,15 +335,19 @@ st.markdown("### 📤 Export")
 ex1, ex2 = st.columns(2)
 
 with ex1.expander("Export geometries as GeoJSON"):
-    if 'gdf' in locals():
+    if 'gdf' in locals() and gdf is not None:
         st.write(f"{gdf.shape[0]} geometries")
-    st.download_button(
-        label="Download",
-        data=gdf_to_bytesio_geojson(gdf),
-        file_name=f"prettymapp_{address[:10]}.geojson",
-        mime="application/geo+json",
-    )
+        st.download_button(
+            label="Download",
+            data=gdf_to_bytesio_geojson(gdf),
+            file_name=f"prettymapp_{address[:10]}.geojson",
+            mime="application/geo+json",
+        )
+    else:
+        st.info("Generate a map first to export geometries")
 
 with ex2.expander("Export map configuration"):
-    if 'config' in locals():
+    if 'config' in locals() and config is not None:
         st.write(config)
+    else:
+        st.info("Generate a map first to export configuration")
