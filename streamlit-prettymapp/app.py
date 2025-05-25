@@ -258,25 +258,6 @@ with form:
     address = col1.text_input("Location Name", key="address")
     radius = col2.slider("Radius (meters)", 100, 2000, 500)
     
-    with st.expander("✏️ Title Customization"):
-        custom_title = st.text_input("Map Title", value="My Custom Map")
-        title_font_size = st.slider("Title Font Size", 8, 40, 16)
-        title_font_family = st.selectbox(
-            "Font Family",
-            ["serif", "sans-serif", "monospace", "cursive", "fantasy"],
-            index=0
-        )
-        title_font_weight = st.selectbox(
-            "Font Weight",
-            ["normal", "bold"],
-            index=0
-        )
-        title_font_style = st.selectbox(
-            "Font Style",
-            ["normal", "italic"],
-            index=0
-        )
-    
     with st.expander("⚙️ Advanced Settings"):
         bg_color = st.color_picker("Background Color", "#ffffff")
         shape = st.selectbox("Map Shape", ["circle", "rectangle"])
@@ -297,9 +278,9 @@ if form.form_submit_button("🖼️ Generate Map", type="primary"):
                     'bg_color': bg_color,
                     'shape': shape,
                     'contour_width': contour_width,
-                    'name': custom_title,
+                    'name': address,
                     'name_on': True,
-                    'font_size': title_font_size,
+                    'font_size': 16,
                 }
 
                 if 'uploaded_gdf' in st.session_state:
@@ -315,13 +296,10 @@ if form.form_submit_button("🖼️ Generate Map", type="primary"):
                 ax = fig.gca()
 
                 # Customize title styling
-                if custom_title:
+                if address:
                     title = ax.title
                     title.set_position([0.01, 1.05])  # Top-left position
-                    title.set_fontfamily(title_font_family)
-                    title.set_fontsize(title_font_size)
-                    title.set_fontweight(title_font_weight)
-                    title.set_style(title_font_style)
+                    title.set_fontweight("bold")
 
                 # Add feature names
                 if show_feature_names:
@@ -335,7 +313,7 @@ if form.form_submit_button("🖼️ Generate Map", type="primary"):
                                 ha='center',
                                 va='center',
                                 color='black',
-                                fontfamily='serif'
+                                fontweight='bold'
                             )
 
                 # Add custom copyright
@@ -346,7 +324,7 @@ if form.form_submit_button("🖼️ Generate Map", type="primary"):
                         transform=ax.transAxes,
                         fontsize=8,
                         color='gray',
-                        fontfamily='serif'
+                        fontweight='bold'
                     )
 
                 st.pyplot(fig)
