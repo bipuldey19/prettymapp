@@ -94,7 +94,10 @@ if search_query and len(search_query) >= 2:
             format_func=lambda x: f"{x['display']} ({x['type']})",
             key="selected_location"
         )
-        address = selected_location['full']
+        if selected_location:
+            address = selected_location['full']
+        else:
+            address = search_query
     else:
         address = search_query
 else:
