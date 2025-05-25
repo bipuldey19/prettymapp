@@ -4,17 +4,19 @@ import base64
 import io
 from io import BytesIO
 import streamlit as st
+from streamlit_image_select import image_select
 from matplotlib import pyplot as plt
 from shapely.geometry import Polygon
 import geopandas as gpd
-import yaml
 
 from utils import (
     st_get_osm_geometries,
     st_plot_all,
     get_colors_from_style,
     gdf_to_bytesio_geojson,
-    slugify
+    slugify,
+    plt_to_svg,
+    svg_to_html
 )
 from prettymapp.geo import GeoCodingError, get_aoi
 from prettymapp.settings import STYLES
@@ -24,15 +26,42 @@ st.set_page_config(
     page_icon="🖼️", 
     initial_sidebar_state="collapsed"
 )
-
 st.markdown("# 🗺️ Prettymapp - Advanced Map Creator")
 
+# Load examples
+with open("./streamlit-prettymapp/examples.json", "r", encoding="utf8") as f:
+    EXAMPLES = json.load(f)
+
 # Initialize session state with required keys
+if "previous_example_index" not in st.session_state:
+    st.session_state["previous_example_index"] = 0
 if "previous_style" not in st.session_state:
     st.session_state["previous_style"] = "Peach"
+if "lc_classes" not in st.session_state:
     lc_class_colors = get_colors_from_style("Peach")
     st.session_state.lc_classes = list(lc_class_colors.keys())
     st.session_state.update(lc_class_colors)
+if "address" not in st.session_state:
+    st.session_state.update(EXAMPLES["Macau"])
+
+# Example selection
+example_image_pattern = "streamlit-prettymapp/example_prints/{}_small.png"
+example_image_fp = [
+    example_image_pattern.format(name.lower()) for name in list(EXAMPLES.keys())[:4]
+]
+
+index_selected = image_select(
+    "",
+    images=example_image_fp,
+    captions=list(EXAMPLES.keys())[:4],
+    index=st.session_state.get("previous_example_index", 0),
+    return_value="index",
+)
+
+if index_selected != st.session_state.get("previous_example_index", 0):
+    name_selected = list(EXAMPLES.keys())[index_selected]
+    st.session_state.update(EXAMPLES[name_selected].copy())
+    st.session_state["previous_example_index"] = index_selected
 
 # Main form
 form = st.form(key="main_form")
@@ -62,11 +91,6 @@ with col3.container(border=True):
         key="style",
         help="Choose from predefined color schemes"
     )
-
-# File uploaders for custom YML and SHP files
-with form.expander("📁 Upload Files", expanded=False):
-    uploaded_yml = st.file_uploader("Upload YAML configuration (optional)", type=["yml", "yaml"])
-    uploaded_shp = st.file_uploader("Upload SHP file (optional)", type=["shp", "zip"])
 
 # Advanced settings expander
 with form.expander("⚙️ Advanced Customization", expanded=False):
@@ -146,21 +170,42 @@ with form.expander("⚙️ Advanced Customization", expanded=False):
                 key="text_rotation"
             )
 
-submitted = form.form_submit_button(label="Generate Map", type="primary")
+# Color customization
+with form.expander("🎨 Advanced Color Customization", expanded=False):
+    if style != st.session_state.get("previous_style", "Peach"):
+        st.session_state.update(get_colors_from_style(style))
+    
+    draw_settings = copy.deepcopy(STYLES[style])
+    cols = st.columns(3)
+    color_picker_index = 0
+    
+    for lc_class in st.session_state.get("lc_classes", []):
+        with cols[color_picker_index % 3]:
+            picked_color = st.color_picker(
+                lc_class.replace("_", " ").title(),
+                key=lc_class
+            )
+            if "_" in lc_class:
+                class_part, idx = lc_class.split("_")
+                draw_settings[class_part]["cmap"][int(idx)] = picked_color
+            else:
+                draw_settings[lc_class]["fc"] = picked_color
+        color_picker_index += 1
+
+form.form_submit_button(label="Generate Map", type="primary")
 
 # Main map generation
-if submitted and st.session_state.get("address"):
+if st.session_state.get("address"):
     try:
         with st.spinner("Creating your masterpiece... (may take up to a minute)"):
             # Get area of interest
             rectangular = shape != "circle"
             aoi = get_aoi(address=address, radius=radius, rectangular=rectangular)
-
+            
             # Get OSM geometries
             df = st_get_osm_geometries(aoi=aoi)
-
+            
             # Configuration
-            draw_settings = copy.deepcopy(STYLES[style])
             config = {
                 "aoi_bounds": aoi.bounds,
                 "draw_settings": draw_settings,
@@ -177,30 +222,23 @@ if submitted and st.session_state.get("address"):
                 "bg_color": bg_color,
             }
 
-            # Merge uploaded YAML config if available
-            if uploaded_yml:
-                uploaded_config = yaml.safe_load(uploaded_yml)
-                config.update(uploaded_config)
-
-            # Handle SHP file (optional feature)
-            if uploaded_shp:
-                try:
-                    gdf = gpd.read_file(uploaded_shp)
-                    df = gdf  # Use shapefile geometry instead of OSM
-                except Exception as e:
-                    st.warning("Failed to read SHP file: " + str(e))
-
             # Generate plot
             fig = st_plot_all(_df=df, **config)
-
+            
+            # Adjust title position to top-left
+            if name_on and custom_title:
+                ax = fig.gca()
+                ax.title.set_position([0.01, 1.05])  # X,Y coordinates
+                ax.title.set_horizontalalignment('left')
+            
             # Display plot
             st.pyplot(fig, pad_inches=0, bbox_inches="tight", transparent=True, dpi=300)
-
+            
             # Download section
             st.markdown("---")
             with st.container(border=True):
                 st.markdown("### 📥 Export Options")
-
+                
                 # Image download
                 col_d1, col_d2 = st.columns(2)
                 with col_d1:
@@ -212,14 +250,14 @@ if submitted and st.session_state.get("address"):
                         )
                         img_buffer = BytesIO()
                         fig.savefig(img_buffer, format=img_format, 
-                                    bbox_inches="tight", pad_inches=0, dpi=300)
+                                  bbox_inches="tight", pad_inches=0, dpi=300)
                         st.download_button(
                             label=f"Download .{img_format}",
                             data=img_buffer.getvalue(),
                             file_name=f"{slugify(address)}.{img_format}",
                             mime=f"image/{img_format}"
                         )
-
+                
                 # Data export
                 with col_d2:
                     with st.expander("📁 Export Data"):
@@ -253,4 +291,5 @@ st.markdown("""
 - Larger areas may take longer to process
 """)
 
+# Update previous style
 st.session_state["previous_style"] = style
