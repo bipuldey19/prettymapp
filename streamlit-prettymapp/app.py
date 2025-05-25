@@ -24,6 +24,11 @@ from prettymapp.plotting import Plot
 from prettymapp.settings import STYLES
 from utils import get_colors_from_style
 
+def gdf_to_bytesio_geojson(gdf: gpd.GeoDataFrame) -> BytesIO:
+    """Convert GeoDataFrame to GeoJSON bytes"""
+    geojson_str = gdf.to_json()
+    return BytesIO(geojson_str.encode())
+
 st.set_page_config(
     page_title="prettymapp", 
     page_icon="🖼️", 
