@@ -284,76 +284,77 @@ with form:
         show_feature_names = st.checkbox("Show Feature Names", False)
         show_copyright = st.checkbox("Show Copyright Info", False)
 
-    if form.form_submit_button("🖼️ Generate Map", type="primary"):
-        if not address and 'uploaded_gdf' not in st.session_state:
-            st.warning("Please select a location or upload boundaries")
-        else:
-            with st.status("Creating map...", expanded=True) as status:
-                try:
-                    config = {
-                        'draw_settings': STYLES[selected_style],
-                        'bg_color': bg_color,
-                        'shape': shape,
-                        'contour_width': contour_width,
-                        'name': custom_title,
-                        'name_on': True,
-                        'font_size': title_font_size,
-                        'font_family': title_font_family,
-                        'font_weight': title_font_weight,
-                        'font_style': title_font_style
-                    }
+    # In the map generation section, modify the code to:
 
-                    if 'uploaded_gdf' in st.session_state:
-                        gdf = st.session_state.uploaded_gdf
-                        config['aoi_bounds'] = gdf.total_bounds
-                    else:
-                        aoi = get_aoi(address=address, radius=radius)
-                        gdf = st_get_osm_geometries(aoi)
-                        config['aoi_bounds'] = aoi.bounds
+if form.form_submit_button("🖼️ Generate Map", type="primary"):
+    if not address and 'uploaded_gdf' not in st.session_state:
+        st.warning("Please select a location or upload boundaries")
+    else:
+        with st.status("Creating map...", expanded=True) as status:
+            try:
+                config = {
+                    'draw_settings': STYLES[selected_style],
+                    'bg_color': bg_color,
+                    'shape': shape,
+                    'contour_width': contour_width,
+                    'name': custom_title,
+                    'name_on': True,
+                    'font_size': title_font_size,
+                }
 
-                    # Generate plot
-                    fig = st_plot_all(gdf, **config)
-                    ax = fig.gca()
+                if 'uploaded_gdf' in st.session_state:
+                    gdf = st.session_state.uploaded_gdf
+                    config['aoi_bounds'] = gdf.total_bounds
+                else:
+                    aoi = get_aoi(address=address, radius=radius)
+                    gdf = st_get_osm_geometries(aoi)
+                    config['aoi_bounds'] = aoi.bounds
 
-                    # Customize title position and style
-                    ax.title.set_position([0.01, 1.05])  # Top-left position
-                    ax.title.set_fontfamily(title_font_family)
-                    ax.title.set_fontsize(title_font_size)
-                    ax.title.set_fontweight(title_font_weight)
-                    ax.title.set_style(title_font_style)
+                # Generate plot
+                fig = st_plot_all(gdf, **config)
+                ax = fig.gca()
 
-                    # Add feature names
-                    if show_feature_names:
-                        for _, row in gdf.iterrows():
-                            if 'name' in row and pd.notnull(row['name']):
-                                ax.text(
-                                    row.geometry.centroid.x,
-                                    row.geometry.centroid.y,
-                                    row['name'],
-                                    fontsize=8,
-                                    ha='center',
-                                    va='center',
-                                    color='black',
-                                    fontfamily='serif'
-                                )
+                # Customize title styling
+                if custom_title:
+                    title = ax.title
+                    title.set_position([0.01, 1.05])  # Top-left position
+                    title.set_fontfamily(title_font_family)
+                    title.set_fontsize(title_font_size)
+                    title.set_fontweight(title_font_weight)
+                    title.set_style(title_font_style)
 
-                    # Add custom copyright
-                    if show_copyright:
-                        ax.text(
-                            0.5, -0.05, "© OpenStreetMap contributors",
-                            ha='center', va='center',
-                            transform=ax.transAxes,
-                            fontsize=8,
-                            color='gray',
-                            fontfamily='serif'
-                        )
+                # Add feature names
+                if show_feature_names:
+                    for _, row in gdf.iterrows():
+                        if 'name' in row and pd.notnull(row['name']):
+                            ax.text(
+                                row.geometry.centroid.x,
+                                row.geometry.centroid.y,
+                                row['name'],
+                                fontsize=8,
+                                ha='center',
+                                va='center',
+                                color='black',
+                                fontfamily='serif'
+                            )
 
-                    st.pyplot(fig)
-                    status.update(label="Map created successfully!", state="complete")
-                    
-                except Exception as e:
-                    st.error(f"Map creation failed: {str(e)}")
-                    st.error("Try adjusting the location or radius")
+                # Add custom copyright
+                if show_copyright:
+                    ax.text(
+                        0.5, -0.05, "© OpenStreetMap contributors",
+                        ha='center', va='center',
+                        transform=ax.transAxes,
+                        fontsize=8,
+                        color='gray',
+                        fontfamily='serif'
+                    )
+
+                st.pyplot(fig)
+                status.update(label="Map created successfully!", state="complete")
+                
+            except Exception as e:
+                st.error(f"Map creation failed: {str(e)}")
+                st.error("Try adjusting the location or radius")
 
 # GPS location handling
 if st.session_state.location.get('lat'):
