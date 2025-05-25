@@ -1,5 +1,6 @@
 import copy
 import json
+import requests
 
 import streamlit as st
 from streamlit_image_select import image_select
@@ -12,6 +13,52 @@ from utils import (
 )
 from prettymapp.geo import GeoCodingError, get_aoi
 from prettymapp.settings import STYLES
+
+@st.cache_data(ttl=300)
+def search_locations(query, limit=5):
+    if not query or len(query) < 2:
+        return []
+    
+    try:
+        response = requests.get(
+            "https://nominatim.openstreetmap.org/search",
+            params={
+                'q': query,
+                'format': 'json',
+                'limit': limit,
+                'addressdetails': 1
+            },
+            headers={'User-Agent': 'prettymapp-streamlit/1.0'},
+            timeout=10
+        )
+        response.raise_for_status()
+        
+        results = []
+        for item in response.json():
+            display_parts = []
+            address = item.get('address', {})
+            
+            if name := item.get('name'):
+                display_parts.append(name)
+            if city := address.get('city') or address.get('town'):
+                display_parts.append(city)
+            if country := address.get('country'):
+                display_parts.append(country)
+            
+            results.append({
+                'display': ', '.join(display_parts) or item.get('display_name', 'Location'),
+                'full': item.get('display_name', ''),
+                'lat': float(item.get('lat', 0)),
+                'lon': float(item.get('lon', 0)),
+                'type': f"{item.get('type', 'place')} ({item.get('class', 'location')})",
+                'importance': item.get('importance', 0)
+            })
+        
+        return sorted(results, key=lambda x: -x['importance'])
+    
+    except Exception as e:
+        st.error(f"Search error: {str(e)}")
+        return []
 
 st.set_page_config(
     page_title="prettymapp", page_icon="🖼️", initial_sidebar_state="collapsed"
