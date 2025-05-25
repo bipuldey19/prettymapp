@@ -65,42 +65,41 @@ st.set_page_config(
 )
 st.markdown("# Prettymapp")
 
-with open("./streamlit-prettymapp/examples.json", "r", encoding="utf8") as f:
-    EXAMPLES = json.load(f)
-
 if not st.session_state:
-    st.session_state.update(EXAMPLES["Macau"])
-
     lc_class_colors = get_colors_from_style("Peach")
     st.session_state.lc_classes = list(lc_class_colors.keys())  # type: ignore
     st.session_state.update(lc_class_colors)
     st.session_state["previous_style"] = "Peach"
-    st.session_state["previous_example_index"] = 0
-
-example_image_pattern = "streamlit-prettymapp/example_prints/{}_small.png"
-example_image_fp = [
-    example_image_pattern.format(name.lower()) for name in list(EXAMPLES.keys())[:4]
-]
-index_selected = image_select(
-    "",
-    images=example_image_fp,
-    captions=list(EXAMPLES.keys())[:4],
-    index=0,
-    return_value="index",
-)
-if index_selected != st.session_state["previous_example_index"]:
-    name_selected = list(EXAMPLES.keys())[index_selected]
-    st.session_state.update(EXAMPLES[name_selected].copy())
-    st.session_state["previous_example_index"] = index_selected
+    st.session_state["search_query"] = ""
+    st.session_state["selected_location"] = None
 
 st.write("")
 form = st.form(key="form_settings")
 col1, col2, col3 = form.columns([3, 1, 1])
 
-address = col1.text_input(
-    "Location address",
-    key="address",
+# Search box for location
+search_query = col1.text_input(
+    "Search location",
+    key="search_query",
+    placeholder="Type to search for a location..."
 )
+
+# Show search results if query is long enough
+if search_query and len(search_query) >= 2:
+    search_results = search_locations(search_query)
+    if search_results:
+        selected_location = col1.selectbox(
+            "Select location",
+            options=search_results,
+            format_func=lambda x: f"{x['display']} ({x['type']})",
+            key="selected_location"
+        )
+        address = selected_location['full']
+    else:
+        address = search_query
+else:
+    address = search_query
+
 radius = col2.slider(
     "Radius (meter)",
     100,
