@@ -9,6 +9,7 @@ import unicodedata
 import zipfile
 from io import BytesIO, StringIO
 from typing import Any
+import copy
 
 import geopandas as gpd
 import pandas as pd
@@ -258,14 +259,96 @@ with form:
     address = col1.text_input("Location Name", key="address")
     radius = col2.slider("Radius (meters)", 100, 2000, 500)
     
-    with st.expander("⚙️ Advanced Settings"):
-        bg_color = st.color_picker("Background Color", "#ffffff")
-        shape = st.selectbox("Map Shape", ["circle", "rectangle"])
-        contour_width = st.slider("Border Width", 0, 10, 2)
-        show_feature_names = st.checkbox("Show Feature Names", False)
-        show_copyright = st.checkbox("Show Copyright Info", False)
+    expander = form.expander("Customize map style")
+    col1style, col2style, _, col3style = expander.columns([2, 2, 0.1, 1])
 
-    # In the map generation section, modify the code to:
+    shape_options = ["circle", "rectangle"]
+    shape = col1style.radio(
+        "Map Shape",
+        options=shape_options,
+        key="shape",
+    )
+
+    bg_shape_options = ["rectangle", "circle", None]
+    bg_shape = col1style.radio(
+        "Background Shape",
+        options=bg_shape_options,
+        key="bg_shape",
+    )
+    bg_color = col1style.color_picker(
+        "Background Color",
+        key="bg_color",
+    )
+    bg_buffer = col1style.slider(
+        "Background Size",
+        min_value=0,
+        max_value=50,
+        help="How much the background extends beyond the figure.",
+        key="bg_buffer",
+    )
+
+    col1style.markdown("---")
+    contour_color = col1style.color_picker(
+        "Map contour color",
+        key="contour_color",
+    )
+    contour_width = col1style.slider(
+        "Map contour width",
+        0,
+        30,
+        help="Thickness of contour line sourrounding the map.",
+        key="contour_width",
+    )
+
+    name_on = col2style.checkbox(
+        "Display title",
+        help="If checked, adds the selected address as the title. Can be customized below.",
+        key="name_on",
+    )
+    custom_title = col2style.text_input(
+        "Custom title (optional)",
+        max_chars=30,
+        key="custom_title",
+    )
+    font_size = col2style.slider(
+        "Title font size",
+        min_value=1,
+        max_value=50,
+        key="font_size",
+    )
+    font_color = col2style.color_picker(
+        "Title font color",
+        key="font_color",
+    )
+    text_x = col2style.slider(
+        "Title left/right",
+        -100,
+        100,
+        key="text_x",
+    )
+    text_y = col2.slider(
+        "Title top/bottom",
+        -100,
+        100,
+        key="text_y",
+    )
+    text_rotation = col2.slider(
+        "Title rotation",
+        -90,
+        90,
+        key="text_rotation",
+    )
+
+    if style != st.session_state["previous_style"]:
+        st.session_state.update(get_colors_from_style(style))  # type: ignore
+    draw_settings = copy.deepcopy(STYLES[style])
+    for lc_class in st.session_state.lc_classes:
+        picked_color = col3style.color_picker(lc_class, key=lc_class)
+        if "_" in lc_class:
+            lc_class, idx = lc_class.split("_")
+            draw_settings[lc_class]["cmap"][int(idx)] = picked_color  # type: ignore
+        else:
+            draw_settings[lc_class]["fc"] = picked_color
 
 if form.form_submit_button("🖼️ Generate Map", type="primary"):
     if not address and 'uploaded_gdf' not in st.session_state:
@@ -274,13 +357,13 @@ if form.form_submit_button("🖼️ Generate Map", type="primary"):
         with st.status("Creating map...", expanded=True) as status:
             try:
                 config = {
-                    'draw_settings': STYLES[selected_style],
+                    'draw_settings': draw_settings,
                     'bg_color': bg_color,
                     'shape': shape,
                     'contour_width': contour_width,
                     'name': address,
-                    'name_on': True,
-                    'font_size': 16,
+                    'name_on': name_on,
+                    'font_size': font_size,
                 }
 
                 if 'uploaded_gdf' in st.session_state:
