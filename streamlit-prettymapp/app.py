@@ -143,6 +143,10 @@ def process_uploaded_file(uploaded_file):
         st.error(f"File processing failed: {str(e)}")
     return None
 
+# Initialize session state for selected location
+if 'selected_location' not in st.session_state:
+    st.session_state.selected_location = None
+
 # File upload section
 with st.expander("📁 Upload Custom Boundaries", expanded=False):
     uploaded_file = st.file_uploader(
@@ -178,7 +182,6 @@ with col1:
 # Display search results
 if 'search_results' in locals() and search_results:
     st.markdown("**🔍 Search Results:**")
-    selected_location = None
     for idx, result in enumerate(search_results):
         cols = st.columns([4, 1])
         display_text = result.get('display', 'Location')
@@ -188,8 +191,8 @@ if 'search_results' in locals() and search_results:
             key=f"result_{idx}",
             use_container_width=True
         ):
-            selected_location = result
-            st.experimental_rerun()  # Rerun to update the form with the selected location
+            st.session_state.selected_location = result
+            st.experimental_rerun()
         cols[1].markdown(f"_{result.get('type', 'location')}_")
 
 # Main form
@@ -198,8 +201,8 @@ col1, col2, col3 = form.columns([3, 1, 1])
 
 # Initialize address with selected location if available
 initial_address = ""
-if 'selected_location' in locals() and selected_location:
-    initial_address = selected_location.get('full', '')
+if st.session_state.selected_location:
+    initial_address = st.session_state.selected_location.get('full', '')
 
 address = col1.text_input(
     "Location address",
