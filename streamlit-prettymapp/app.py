@@ -46,6 +46,22 @@ st.markdown("""
 
 st.markdown("# 🗺️ Prettymapp - Beautiful Maps Made Easy")
 
+# Initialize session state
+if not st.session_state:
+    st.session_state.update(EXAMPLES["Macau"])
+    lc_class_colors = get_colors_from_style("Peach")
+    st.session_state.lc_classes = list(lc_class_colors.keys())  # type: ignore
+    st.session_state.update(lc_class_colors)
+    st.session_state["previous_style"] = "Peach"
+    st.session_state["previous_example_index"] = 0
+
+# Ensure previous_style exists
+if "previous_style" not in st.session_state:
+    st.session_state["previous_style"] = "Peach"
+
+with open("./streamlit-prettymapp/examples.json", "r", encoding="utf8") as f:
+    EXAMPLES = json.load(f)
+
 @st.cache_data(
     show_spinner=False, 
     hash_funcs={Polygon: lambda x: json.dumps(x.__geo_interface__)}
