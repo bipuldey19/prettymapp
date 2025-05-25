@@ -22,6 +22,7 @@ from prettymapp.geo import get_aoi
 from prettymapp.osm import get_osm_geometries
 from prettymapp.plotting import Plot
 from prettymapp.settings import STYLES
+from prettymapp.utils import get_colors_from_style
 
 st.set_page_config(
     page_title="prettymapp", 
@@ -314,7 +315,9 @@ for lc_class in lc_classes:
     else:
         draw_settings[lc_class]["fc"] = picked_color
 
-if form.form_submit_button("🖼️ Generate Map", type="primary"):
+submit_button = form.form_submit_button("🖼️ Generate Map", type="primary")
+
+if submit_button:
     if not address and 'uploaded_gdf' not in locals():
         st.warning("Please select a location or upload boundaries")
     else:
