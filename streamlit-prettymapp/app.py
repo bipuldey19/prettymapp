@@ -189,15 +189,21 @@ if 'search_results' in locals() and search_results:
             use_container_width=True
         ):
             selected_location = result
+            st.experimental_rerun()  # Rerun to update the form with the selected location
         cols[1].markdown(f"_{result.get('type', 'location')}_")
 
 # Main form
 form = st.form(key="form_settings")
 col1, col2, col3 = form.columns([3, 1, 1])
 
+# Initialize address with selected location if available
+initial_address = ""
+if 'selected_location' in locals() and selected_location:
+    initial_address = selected_location.get('full', '')
+
 address = col1.text_input(
     "Location address",
-    value=selected_location.get('full', '') if 'selected_location' in locals() and selected_location else ''
+    value=initial_address
 )
 radius = col2.slider(
     "Radius (meter)",
@@ -267,12 +273,12 @@ text_x = col2style.slider(
     -100,
     100
 )
-text_y = col2style.slider(
+text_y = col2.slider(
     "Title top/bottom",
     -100,
     100
 )
-text_rotation = col2style.slider(
+text_rotation = col2.slider(
     "Title rotation",
     -90,
     90
